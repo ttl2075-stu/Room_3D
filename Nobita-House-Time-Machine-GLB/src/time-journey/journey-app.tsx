@@ -2,9 +2,9 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { HouseModel } from '../editor/house/house-model';
-import { LEVEL } from '../editor/house/plan';
+import { LEVEL, interiorOf, roomById } from '../editor/house/plan';
 import { useReducedMotionRef } from '../utils/reduced-motion';
-import { cards, type WishCard } from '../wishes/demo';
+import { type WishCard } from '../wishes/demo';
 import { WishDialog } from '../wishes/dialog';
 import { WishWall, wishFrame } from '../wishes/wall';
 import { TimeMachine } from './machine';
@@ -28,6 +28,7 @@ const DESK_AIM = new THREE.Vector3(2.13, LEVEL.upper + 0.85, -3.08);
 const ROOM_BOARD_EYE = new THREE.Vector3(2.13, LEVEL.upper + 0.90, -3.74);
 const ROOM_BOARD_AIM = new THREE.Vector3(2.13, LEVEL.upper + 0.62, -3.05);
 const CAMERA_FOV = 57;
+const ROOM_BOUNDS = interiorOf(roomById('nobita').rects[0]!, 'upper');
 const WISH_AIM = new THREE.Vector3(...wishFrame.center);
 const DESK_LABELS = [new THREE.Vector3(2.13, LEVEL.upper + 1.12, -2.73)];
 const PORTAL_LABELS = PORTALS.map(({ position }) => new THREE.Vector3(position[0], position[1] + 2.27, position[2]));
@@ -60,8 +61,8 @@ function SceneAtmosphere({phase}: {phase:Phase}) {
   const scene=useThree((state)=>state.scene);
   useEffect(()=>{
     const isFlight=phase==='flight';
-    scene.background=new THREE.Color(isFlight?'#0a2747':'#dff3fd');
-    scene.fog=isFlight?new THREE.Fog('#0b3557',36,164):null;
+    scene.background=new THREE.Color(isFlight?'#030209':'#dff3fd');
+    scene.fog=null;
     return ()=>{scene.fog=null;};
   },[scene,phase]);
   return null;
@@ -172,8 +173,8 @@ function FlightScene({
   </group>;
 }
 
-function CameraDirector({phase,ship,viewMode,wishGallery}: {
-  phase:Phase; ship:{current:ShipPose}; viewMode:ViewMode; wishGallery:boolean;
+function CameraDirector({phase,ship,viewMode,wishGallery,paused}: {
+  phase:Phase; ship:{current:ShipPose}; viewMode:ViewMode; wishGallery:boolean; paused:boolean;
 }) {
   const {camera,gl,size}=useThree();
   const reducedMotion = useReducedMotionRef();
@@ -188,20 +189,37 @@ function CameraDirector({phase,ship,viewMode,wishGallery}: {
     return WISH_AIM.clone().add(new THREE.Vector3(-distance, 0, 0));
   }, [size.width, size.height]);
   const lookRef=useRef(DESK_AIM.clone());
-  const orbit=useRef({yaw:0,pitch:0,dragging:false,x:0,y:0});
+  const initialDirection = DESK_AIM.clone().sub(ROOM_EYE).normalize();
+  const orbit=useRef({yaw:Math.atan2(-initialDirection.x,-initialDirection.z),pitch:Math.asin(initialDirection.y),dragging:false,x:0,y:0});
+  const roomPosition=useRef(ROOM_EYE.clone());
+  const roomKeys=useRef(new Set<string>());
+  const direction=useMemo(()=>new THREE.Vector3(),[]);
   useEffect(()=>{
-    if(phase!=='room' || wishGallery)return;
+    if(phase!=='room'||wishGallery||paused)return;
+    const down=(e:KeyboardEvent)=>{
+      if(e.target instanceof HTMLElement && (e.target.closest('input,textarea,select,button')||e.target.isContentEditable))return;
+      if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){
+        e.preventDefault();roomKeys.current.add(e.code);
+      }
+    };
+    const up=(e:KeyboardEvent)=>{roomKeys.current.delete(e.code);};
+    const clear=()=>{roomKeys.current.clear();orbit.current.dragging=false;};
+    window.addEventListener('keydown',down);window.addEventListener('keyup',up);window.addEventListener('blur',clear);
+    return()=>{clear();window.removeEventListener('keydown',down);window.removeEventListener('keyup',up);window.removeEventListener('blur',clear);};
+  },[phase,wishGallery,paused]);
+  useEffect(()=>{
+    if(phase!=='room' || wishGallery || paused)return;
     const dom=gl.domElement;
     const down=(e:PointerEvent)=>{if(e.button!==0)return;orbit.current.dragging=true;orbit.current.x=e.clientX;orbit.current.y=e.clientY;};
     const move=(e:PointerEvent)=>{if(!orbit.current.dragging)return;const o=orbit.current;
-      o.yaw=THREE.MathUtils.clamp(o.yaw+(e.clientX-o.x)*0.0025,-0.42,0.42);
-      o.pitch=THREE.MathUtils.clamp(o.pitch+(e.clientY-o.y)*0.0017,-0.24,0.24);
+      o.yaw-=(e.clientX-o.x)*0.0025;
+      o.pitch=THREE.MathUtils.clamp(o.pitch-(e.clientY-o.y)*0.0025,-1.35,1.35);
       o.x=e.clientX;o.y=e.clientY;
     };
     const up=()=>{orbit.current.dragging=false;};
-    dom.addEventListener('pointerdown',down);window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
-    return ()=>{orbit.current.dragging=false;dom.removeEventListener('pointerdown',down);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
-  },[gl,phase,wishGallery]);
+    dom.addEventListener('pointerdown',down);window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);window.addEventListener('blur',up);
+    return ()=>{orbit.current.dragging=false;dom.removeEventListener('pointerdown',down);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);window.removeEventListener('blur',up);};
+  },[gl,phase,wishGallery,paused]);
   useEffect(()=>{
     if(phase==='flight'){
       const p=ship.current.position;
@@ -214,9 +232,18 @@ function CameraDirector({phase,ship,viewMode,wishGallery}: {
     if(phase!=='flight'){
       const o=orbit.current;
       const viewingWishes = phase === 'room' && wishGallery;
-      const pos=phase==='boarding'?ROOM_BOARD_EYE:viewingWishes?wishEye:ROOM_EYE;
+      const keys=roomKeys.current;
+      if(phase==='room'&&!viewingWishes&&!paused){
+        const forward=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown'));
+        const right=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));
+        direction.set(-Math.sin(o.yaw)*forward+Math.cos(o.yaw)*right,0,-Math.cos(o.yaw)*forward-Math.sin(o.yaw)*right);
+        if(direction.lengthSq()>0)roomPosition.current.addScaledVector(direction.normalize(),1.8*dt);
+        roomPosition.current.x=THREE.MathUtils.clamp(roomPosition.current.x,ROOM_BOUNDS.x0+.2,ROOM_BOUNDS.x1-.2);
+        roomPosition.current.z=THREE.MathUtils.clamp(roomPosition.current.z,ROOM_BOUNDS.z0+.2,ROOM_BOUNDS.z1-.2);
+      }
+      const pos=phase==='boarding'?ROOM_BOARD_EYE:viewingWishes?wishEye:roomPosition.current;
       const aim=(phase==='boarding'?ROOM_BOARD_AIM:viewingWishes?WISH_AIM:DESK_AIM).clone();
-      if(phase==='room' && !viewingWishes)aim.add(new THREE.Vector3(o.yaw*1.7,-o.pitch*1.25,0));
+      if(phase==='room' && !viewingWishes)aim.copy(pos).add(direction.set(-Math.sin(o.yaw)*Math.cos(o.pitch),Math.sin(o.pitch),-Math.cos(o.yaw)*Math.cos(o.pitch)));
       const immediate = phase === 'room' && reducedMotion.current;
       camera.position.lerp(pos,immediate?1:1-Math.exp(-3.8*dt));
       lookRef.current.lerp(aim,immediate?1:1-Math.exp(-6*dt));
@@ -246,7 +273,7 @@ export default function TimeJourney() {
   const [warp,setWarp]=useState(false);
   const [album,setAlbum]=useState<number|null>(null);
   const [viewMode,setViewMode]=useState<ViewMode>('front');
-  const [quality,setQuality]=useState<'sharp'|'balanced'>('sharp');
+  const quality = 'sharp';
   const [speed,setSpeed]=useState(0);
   const [error,setError]=useState('');
   const worldButtons = useRef<(HTMLButtonElement | null)[]>([]);
@@ -319,7 +346,7 @@ export default function TimeJourney() {
       onCreated={({gl})=>{gl.shadowMap.type=THREE.PCFSoftShadowMap;}}
     >
       <SceneAtmosphere phase={phase}/>
-      <CameraDirector phase={phase} ship={ship} viewMode={viewMode} wishGallery={wishGallery}/>
+      <CameraDirector phase={phase} ship={ship} viewMode={viewMode} wishGallery={wishGallery} paused={wish !== null}/>
       {!wishGallery && <WorldLabels
         anchors={phase === 'flight' ? PORTAL_LABELS : DESK_LABELS}
         buttons={worldButtons}
@@ -350,29 +377,7 @@ export default function TimeJourney() {
           {phase === 'flight' ? 'Đang tải cỗ máy thời gian…' : 'Đang dựng phòng Nobita…'}
         </div>
       )}
-      <header className="journey-header panel">
-        <div className="journey-identity"><span className="journey-logo">⏰</span><div><b>NOBITA · TIME MEMORIES</b><small>{phase==='flight'?'Đang du hành qua miền ký ức':'Phòng Nobita · Không gian gốc 3D'}</small></div></div>
-        <div className="journey-header-actions"><button className="journey-button" onClick={()=>setQuality(q=>q==='sharp'?'balanced':'sharp')}>Độ nét: {quality==='sharp'?'Cao':'Tiêu chuẩn'}</button><a className="journey-button" href="/characters/doraemon">Xem model gốc</a><a className="journey-button" href="/house">Khám phá nhà</a></div>
-      </header>
-      {phase!=='flight' ? (wishGallery ? <div className="journey-wish-toolbar">
-        <button className="journey-button" onClick={() => setWishGallery(false)}>Về góc phòng</button>
-        <select aria-label="Chọn thiệp" value="" onChange={(event) => {
-          const card = cards.find(({ id }) => id === Number(event.target.value));
-          if (card) setWish(card);
-        }}>
-          <option value="" disabled>Chọn thiệp</option>
-          {cards.map(({ id }) => <option key={id} value={id}>Thiệp {id}</option>)}
-        </select>
-      </div> : <section className="journey-intro panel">
-        <p className="journey-eyebrow">KHỞI ĐẦU CHUYẾN DU HÀNH</p>
-        <h1>Phòng của Nobita</h1>
-        <p>Bạn đang đứng trong căn phòng thật của repo gốc. Bàn học ngay phía trước có ngăn kéo dẫn đến cỗ máy thời gian.</p>
-        <div className="journey-row">
-          <button className="journey-button journey-button-primary" disabled={phase==='boarding'} onClick={board}>{phase==='boarding'?'Đang mở ngăn bàn…':'Mở ngăn bàn · Lên cỗ máy'}</button>
-          {phase === 'room' && <button className="journey-button" onClick={() => setWishGallery(true)}>Góc lời chúc</button>}
-        </div>
-        <small>Kéo chuột để nhìn quanh · Hoặc nhấn trực tiếp vào ngăn bàn 3D</small>
-      </section>) : <>
+      {phase==='flight' && <>
         <section className="journey-flight-controls panel">
           <p className="journey-eyebrow">CHUYẾN DU HÀNH</p><h2>Cỗ máy thời gian</h2>
           <p>5 nhân vật là model GLB có animation từ repo Nobita House.</p>
@@ -390,7 +395,7 @@ export default function TimeJourney() {
           </div>)}
         </aside>
       </>}
-      <div className="journey-bottom"><span>✦ Phòng 3D gốc · 5 GLB thật · ký ức tương tác</span><span>{phase==='flight'?'Bấm cửa 3D để mở album':'Căn phòng cố định · Doraemon cùng bạn di chuyển'}</span></div>
+
     </div>
     <div className={`journey-warp ${warp?'visible':''}`} aria-hidden="true"><span>✧</span></div>
     {album!==null&&<Gallery album={album} onClose={()=>setAlbum(null)}/>}
@@ -404,3 +409,4 @@ export default function TimeJourney() {
     {error&&<WebglError error={error}/>}
   </main>;
 }
+

@@ -1,5 +1,5 @@
 import { useFrame } from '@react-three/fiber';
-import { memo, useMemo, useRef } from 'react';
+import { memo, useRef } from 'react';
 import * as THREE from 'three';
 
 export const PORTALS = [
@@ -24,11 +24,15 @@ function FloatingClock({ index }: { index: number }) {
   });
   return <group ref={group} position={[x,y,z]} rotation={[0,(index%4)*0.17,0]}>
     <mesh castShadow rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.56,0.56,0.15,36]}/><meshStandardMaterial color={index%2 ? '#efb56f':'#76b7da'} roughness={0.42}/></mesh>
+    {[0, Math.PI].map((rotation) => (
+      <group key={rotation} rotation={[0, rotation, 0]}>
     <mesh position={[0,0,0.084]}><circleGeometry args={[0.48,36]}/><meshBasicMaterial color="#fffcf2"/></mesh>
     {Array.from({length:12},(_,i)=><mesh key={i} position={[Math.sin(i*Math.PI/6)*0.39,Math.cos(i*Math.PI/6)*0.39,0.092]}>
       <sphereGeometry args={[0.021,6,6]}/><meshBasicMaterial color="#294d66"/></mesh>)}
     <mesh position={[0.09,0.055,0.106]} rotation={[0,0,-0.6]}><boxGeometry args={[0.028,0.24,0.02]}/><meshBasicMaterial color="#225479"/></mesh>
     <mesh position={[-0.06,0.045,0.110]} rotation={[0,0,0.9]}><boxGeometry args={[0.022,0.33,0.02]}/><meshBasicMaterial color="#c35f5e"/></mesh>
+      </group>
+    ))}
   </group>;
 }
 
@@ -48,52 +52,75 @@ function MemoryDoor({ index, onSelect }: { index: number; onSelect: (index:numbe
   </group>;
 }
 
+/** Camera-centred sky: direction-based noise has no panorama seam or open ends. */
+function GalaxySky() {
+  const sky = useRef<THREE.Mesh>(null);
+  useFrame(({ camera }) => { sky.current?.position.copy(camera.position); });
+  return <mesh ref={sky} frustumCulled={false} renderOrder={-100}>
+    <sphereGeometry args={[220, 48, 32]} />
+    <shaderMaterial side={THREE.BackSide} depthWrite={false} depthTest={false} toneMapped={false}
+      vertexShader={`
+        varying vec3 vDirection;
+        void main() {
+          vDirection = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `}
+      fragmentShader={`
+        varying vec3 vDirection;
+        float hash(vec3 p) {
+          p = fract(p * .3183099 + vec3(.11, .37, .73));
+          p *= 17.0;
+          return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+        }
+        float noise(vec3 p) {
+          vec3 i = floor(p), f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
+                         mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+                     mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
+                         mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y), f.z);
+        }
+        float nebula(vec3 p) {
+          float n = 0.0, weight = .55;
+          for (int i = 0; i < 5; i++) {
+            n += weight * noise(p);
+            p = p * 2.03 + vec3(13.1, 7.7, 19.3);
+            weight *= .5;
+          }
+          return n;
+        }
+        void main() {
+          vec3 d = normalize(vDirection);
+          float cloud = smoothstep(.25, .82, nebula(d * 4.0));
+          float tint = nebula(d * 3.0 + vec3(21.0));
+          vec3 color = vec3(.009, .006, .035);
+          color += mix(vec3(.035,.06,.23), vec3(.24,.035,.28), tint) * cloud;
+          color += vec3(.04,.1,.15) * pow(cloud, 3.0);
+          vec3 grid = d * 155.0;
+          vec3 cell = floor(grid);
+          vec3 starCenter = vec3(hash(cell),hash(cell+17.0),hash(cell+43.0));
+          float star = 1.0-smoothstep(.025,.14,length(fract(grid)-starCenter));
+          star *= step(.90,hash(cell+71.0));
+          color += mix(vec3(.57,.74,1.0),vec3(1.0,.84,.69),hash(cell+29.0))*star;
+          gl_FragColor = vec4(color, 1.0);
+          #include <colorspace_fragment>
+        }
+      `}
+    />
+  </mesh>;
+}
+
 function TimeTunnelModel({ onSelect }: { onSelect:(index:number)=>void }) {
-  const particles = useMemo(() => {
-    // Deterministic positions: no flickering when React rerenders.
-    let seed=20261120;
-    const rnd=()=>{ seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
-    const points = new Float32Array(2600*3);
-    for(let i=0;i<2600;i++){
-      const a=rnd()*Math.PI*2, r=7.8+rnd()*3.6;
-      points[i*3]=Math.cos(a)*r;
-      points[i*3+1]=2.2+Math.sin(a)*r;
-      points[i*3+2]=12-rnd()*140;
-    }
-    return points;
-  },[]);
-  return <group name="blue-time-tunnel">
+  return <group name="galaxy-time-space">
+    <GalaxySky />
     <ambientLight intensity={0.78} color="#bdeeff"/>
     <hemisphereLight intensity={1.4} args={['#f0fcff','#163f65',1.4]}/>
     <directionalLight position={[5,10,6]} intensity={2.2} color="#ffffff" castShadow shadow-mapSize={[2048,2048]}/>
     <pointLight position={[0,2,8]} color="#90dbff" intensity={60} distance={25}/>
     <pointLight position={[1,5,-46]} color="#c7f9ef" intensity={50} distance={28}/>
     <pointLight position={[-3,0,-85]} color="#ffe6a4" intensity={46} distance={27}/>
-    {/* Visible from inside, ~19m diameter and ~140m long; no flat billboard tunnel. */}
-    <mesh rotation={[Math.PI/2,0,0]} position={[0,2,-59]}>
-      <cylinderGeometry args={[9.8,9.8,145,72,1,true]}/>
-      <meshStandardMaterial color="#248bbd" emissive="#0b639b" emissiveIntensity={0.44} roughness={0.88} side={THREE.BackSide} />
-    </mesh>
-    {Array.from({length:29},(_,i)=> <mesh key={`ring-${i}`} position={[Math.sin(i*0.5)*0.36,2+Math.cos(i*0.42)*0.28,11-i*4.7]}>
-      <torusGeometry args={[8.95 + Math.sin(i*0.33)*0.24,0.13,12,80]}/>
-      <meshBasicMaterial color={i%4===0 ? '#ffe7aa' : i%2 ? '#8de6ff' : '#dcfdff'} transparent opacity={0.66} toneMapped={false}/>
-    </mesh>)}
     {Array.from({length:30},(_,i)=><FloatingClock key={`clock-${i}`} index={i}/>)}
-    <points>
-      <bufferGeometry><bufferAttribute attach="attributes-position" args={[particles,3]}/></bufferGeometry>
-      <pointsMaterial color="#eaffff" size={0.12} sizeAttenuation transparent opacity={0.8} depthWrite={false}/>
-    </points>
-    {/* Ribbon strips spiral around the actual tunnel axis. */}
-    {Array.from({length:5},(_,band)=>{
-      const points=[] as THREE.Vector3[];
-      for(let j=0;j<=72;j++){
-        const z=10-j*1.88, a=j*.23+band*Math.PI*2/5;
-        points.push(new THREE.Vector3(Math.sin(a)*8.25,2+Math.cos(a)*8.25,z));
-      }
-      return <mesh key={`ribbon-${band}`} geometry={new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points),220,0.045,6,false)}>
-        <meshBasicMaterial color={band%2?'#eafcff':'#87dafa'} transparent opacity={0.42} toneMapped={false}/>
-      </mesh>;
-    })}
     {PORTALS.map((_,i)=><MemoryDoor key={i} index={i} onSelect={onSelect}/>)}
   </group>;
 }
