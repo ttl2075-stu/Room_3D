@@ -1,131 +1,159 @@
 import { useFrame } from '@react-three/fiber';
-import { memo, useEffect, useState } from 'react';
+import { memo, useRef, useState } from 'react';
+import type { Group } from 'three';
 import { MemoryBillboard, MemoryPhotoFrame } from './memory-frame';
-import { type EventPlacement, FLIGHT_END, FLIGHT_START, MEMORY_LAYOUT } from './memory-layout';
+import {
+  closestLoopZ,
+  type EventPlacement,
+  FLIGHT_START,
+  MEMORY_LAYOUT,
+  MEMORY_STATIONS,
+  TRACK_EDGE,
+} from './memory-layout';
 
-const stops = MEMORY_LAYOUT.flatMap(({ stops, zone }) =>
-  stops.map((stop) => ({ ...stop, color: zone.color })),
-);
-const frameSizes = {
-  gallery: [2.12, 1.4],
-  research: [1.72, 1.8],
-  showcase: [2.48, 1.73],
-  landscape: [2.64, 1.45],
-  polaroid: [2.12, 1.67],
-  milestone: [2.55, 1.52],
-  screens: [1.65, 1.4],
-} as const;
-
-type OpenEvent = (eventId: string, src?: string) => void;
-
-function MemoryEvent({ stop, onOpen }: { stop: EventPlacement & { color: string }; onOpen: OpenEvent }) {
-  const [hovered, setHovered] = useState(false);
-  useEffect(() => {
-    if (!hovered) return;
-    document.body.style.cursor = 'pointer';
-    return () => {
-      document.body.style.cursor = '';
-    };
-  }, [hovered]);
-  const { event, samples, color, side, z } = stop;
-  const polaroid = event.layout === 'polaroid';
-  const count = event.images.length + event.videos.length;
-  const frames = samples.length ? samples : [undefined];
-  const columns = Math.min(3, frames.length);
-  const [width, height] = frameSizes[event.layout];
+function StationRail({ width, bottom }: { width: number; bottom: number }) {
   return (
-    <group
-      position={[side * 7.6, 3.22, z]}
-      rotation={[0, side * -0.67, 0]}
-      onPointerOver={(event) => {
-        event.stopPropagation();
-        setHovered(true);
-      }}
-      onPointerOut={() => setHovered(false)}
-    >
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: The album selector provides keyboard access. */}
-      <group
-        position={[0, 1.56, 0.08]}
-        onClick={(event3d) => {
-          event3d.stopPropagation();
-          onOpen(event.id);
-        }}
-      >
-        <MemoryBillboard
-          title={event.title}
-          subtitle={
-            count ? `${event.images.length} ảnh · ${event.videos.length} video` : 'Chưa có ảnh triển lãm'
-          }
-          color={color}
-        />
-      </group>
-      {frames.map((item, index) => (
-        // biome-ignore lint/a11y/noStaticElementInteractions: The same photos are available via the album selector.
-        <group
-          key={item?.src ?? event.id}
-          position={[
-            ((index % columns) - (columns - 1) / 2) * (width + 0.23),
-            -0.08 - Math.floor(index / columns) * (height + 0.19),
-            0,
-          ]}
-          rotation={[0, 0, polaroid ? (index % 2 ? 0.035 : -0.035) : 0]}
-          onClick={(event3d) => {
-            event3d.stopPropagation();
-            onOpen(event.id, item?.src);
-          }}
-        >
-          <MemoryPhotoFrame
-            media={item}
-            color={color}
-            width={width}
-            height={height}
-            hovered={hovered}
-            polaroid={polaroid}
-          />
-        </group>
+    <group position={[0, bottom, -0.18]}>
+      <mesh>
+        <boxGeometry args={[width + 0.22, 0.045, 0.16]} />
+        <meshStandardMaterial color="#667182" metalness={0.58} roughness={0.4} />
+      </mesh>
+      {[-1, 1].map((side) => (
+        <mesh key={side} position={[side * (width / 2 + 0.09), -0.15, 0]}>
+          <boxGeometry args={[0.033, 0.28, 0.12]} />
+          <meshStandardMaterial color="#667182" metalness={0.58} roughness={0.4} />
+        </mesh>
       ))}
     </group>
   );
 }
 
-function Exhibition({ onOpen }: { onOpen: OpenEvent }) {
+function MemoryStation({
+  station,
+  worldZ,
+  focused,
+  visible,
+  onSelect,
+}: {
+  station: EventPlacement;
+  worldZ: number;
+  focused: boolean;
+  visible: boolean;
+  onSelect: (station: EventPlacement, src?: string) => void;
+}) {
+  const { event, color, x, y, yaw, frames, width, frameHeight, titleY, titleHeight, side } = station;
+  const bottom = -frameHeight / 2 - 0.17;
+  const anchorLength = Math.abs(x) - TRACK_EDGE;
+  const height = y + bottom;
+  const info = [
+    event.images.length && `${event.images.length} ảnh`,
+    event.videos.length && `${event.videos.length} video`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <group position={[x, y, worldZ]} name={event.id} visible={visible}>
+      <group position={[(-side * anchorLength) / 2, -y + 0.12, 0]}>
+        <mesh>
+          <boxGeometry args={[anchorLength, 0.035, 0.035]} />
+          <meshBasicMaterial color="#65677c" />
+        </mesh>
+        <mesh position={[(-side * anchorLength) / 2, 0.025, 0]}>
+          <sphereGeometry args={[0.085, 10, 6]} />
+          <meshBasicMaterial color={focused ? '#fff3da' : color} />
+        </mesh>
+      </group>
+      <mesh position={[0, bottom - height / 2, -0.18]}>
+        <boxGeometry args={[0.05, height, 0.05]} />
+        <meshStandardMaterial color="#50586a" metalness={0.5} roughness={0.38} />
+      </mesh>
+      <group rotation={[0, yaw, 0]}>
+        <StationRail width={width} bottom={bottom} />
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: Stations are also selectable using the HUD. */}
+        <group
+          position={[0, titleY, 0.03]}
+          onClick={
+            visible
+              ? (event3d) => {
+                  event3d.stopPropagation();
+                  onSelect(station);
+                }
+              : undefined
+          }
+        >
+          <MemoryBillboard
+            title={event.title}
+            subtitle={info}
+            width={width}
+            height={titleHeight}
+            color={color}
+          />
+        </group>
+        {frames.map((frame) => (
+          <MemoryPhotoFrame
+            key={frame.media.src}
+            frame={frame}
+            color={color}
+            polaroid={event.layout === 'collage'}
+            onSelect={visible ? () => onSelect(station, frame.media.src) : undefined}
+          />
+        ))}
+      </group>
+    </group>
+  );
+}
+
+function Exhibition({
+  focusId,
+  onSelect,
+}: {
+  focusId?: string;
+  onSelect: (station: EventPlacement, src?: string) => void;
+}) {
   const [band, setBand] = useState(Math.floor(FLIGHT_START / 8));
+  const rail = useRef<Group>(null);
   useFrame(({ camera }) => {
+    if (rail.current) rail.current.position.z = camera.position.z;
     const next = Math.floor(camera.position.z / 8);
     if (next !== band) setBand(next);
   });
-  const near = (z: number) => Math.abs(band * 8 - z) < 38;
+  const reference = band * 8;
+  const worldZ = (z: number) => closestLoopZ(z, reference);
+  const near = (z: number) => Math.abs(reference - worldZ(z)) < 47;
   return (
-    <group name="continuous-memory-exhibition">
-      {[-4.3, 4.3].map((x) => (
-        <mesh key={x} position={[x, 0.1, (FLIGHT_START + FLIGHT_END) / 2]}>
-          <boxGeometry args={[0.035, 0.035, FLIGHT_START - FLIGHT_END]} />
-          <meshBasicMaterial color="#455789" />
-        </mesh>
-      ))}
+    <group name="memory-constellation-exhibition">
+      <group ref={rail}>
+        {[-TRACK_EDGE, TRACK_EDGE].map((x) => (
+          <mesh key={x} position={[x, 0.12, 0]}>
+            <boxGeometry args={[0.027, 0.035, 500]} />
+            <meshBasicMaterial color="#535d75" />
+          </mesh>
+        ))}
+      </group>
       {MEMORY_LAYOUT.map(
         ({ zone, start }, index) =>
+          !focusId &&
           near(start) && (
-            <group key={zone.id} position={[0, 7.1, start - 3]}>
+            <group key={zone.id} position={[0, 6.8, worldZ(start - 3.7)]}>
               <MemoryBillboard
                 title={zone.title}
                 subtitle={`Khu ${index + 1} / ${MEMORY_LAYOUT.length}`}
                 color={zone.color}
-                width={4.8}
+                width={3.8}
               />
             </group>
           ),
       )}
-      {stops
-        .filter(({ z }) => near(z))
-        .map((stop) => (
-          <MemoryEvent key={stop.event.id} stop={stop} onOpen={onOpen} />
-        ))}
-      {near(FLIGHT_END) && (
-        <group position={[0, 5.4, FLIGHT_END - 4]}>
-          <MemoryBillboard title="Kết thúc hành trình" subtitle="Memory Time Gallery" color="#82eef7" />
-        </group>
-      )}
+      {MEMORY_STATIONS.filter(({ z, event }) => near(z) || event.id === focusId).map((station) => (
+        <MemoryStation
+          key={station.event.id}
+          station={station}
+          worldZ={worldZ(station.z)}
+          focused={station.event.id === focusId}
+          visible={!focusId || station.event.id === focusId}
+          onSelect={onSelect}
+        />
+      ))}
     </group>
   );
 }

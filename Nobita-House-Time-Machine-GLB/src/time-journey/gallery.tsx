@@ -332,17 +332,10 @@ export function Gallery({
         </>
       ) : (
         <>
-          {!legacy && (
+          {publicMedia.length > 0 && (
             <section>
               <h3>Ảnh và video công khai</h3>
-              {publicMedia.length > 0 ? (
-                cards(publicMedia)
-              ) : (
-                <div className="memory-media-empty">
-                  <strong>{title}</strong>
-                  <span>Chưa có ảnh triển lãm</span>
-                </div>
-              )}
+              {cards(publicMedia)}
             </section>
           )}
           <section>

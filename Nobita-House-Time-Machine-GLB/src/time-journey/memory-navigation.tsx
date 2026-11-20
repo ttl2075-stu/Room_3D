@@ -1,17 +1,19 @@
-import { FLIGHT_END, FLIGHT_START, MEMORY_LAYOUT, zoneAt } from './memory-layout';
+import { distanceIntoLoop, LOOP_LENGTH, MEMORY_LAYOUT, nearbyStation, zoneAt } from './memory-layout';
 
 export function MemoryNavigation({
   z,
   view,
   peek,
   reduced,
+  autoFly,
+  onAutoFly,
   onReduced,
   onZone,
   onMove,
   onStop,
   onView,
   onPeek,
-  onOpen,
+  onInspect,
   onLegacy,
   onReturn,
 }: {
@@ -19,21 +21,24 @@ export function MemoryNavigation({
   view: 'front' | 'chase';
   peek: number;
   reduced: boolean;
+  autoFly: boolean;
+  onAutoFly: () => void;
   onReduced: (reduced: boolean) => void;
   onZone: (z: number) => void;
   onMove: (distance: number) => void;
   onStop: () => void;
   onView: () => void;
   onPeek: (side: number) => void;
-  onOpen: (id: string) => void;
+  onInspect: (id: string) => void;
   onLegacy: () => void;
   onReturn: () => void;
 }) {
   const index = zoneAt(z);
   const placement = MEMORY_LAYOUT[index];
   if (!placement) return null;
-  const { zone, stops } = placement;
-  const progress = Math.round((100 * (FLIGHT_START - z)) / (FLIGHT_START - FLIGHT_END));
+  const { zone } = placement;
+  const nearby = nearbyStation(z);
+  const progress = Math.floor((100 * distanceIntoLoop(z)) / LOOP_LENGTH);
   return (
     <>
       <section className="memory-status" aria-label="Tiến độ hành trình">
@@ -42,8 +47,7 @@ export function MemoryNavigation({
           {index + 1}/{MEMORY_LAYOUT.length} · {zone.title}
         </p>
         <div>
-          <progress aria-label="Tiến độ toàn hành trình" max={100} value={progress} />{' '}
-          <span>{progress}%</span>
+          <progress aria-label="Tiến độ vòng hiện tại" max={100} value={progress} /> <span>{progress}%</span>
         </div>
       </section>
       <section className="memory-menu" aria-label="Điều hướng triển lãm">
@@ -61,16 +65,31 @@ export function MemoryNavigation({
             </option>
           ))}
         </select>
-        <select aria-label="Mở album trong khu" value="" onChange={(e) => onOpen(e.target.value)}>
+        <select
+          aria-label="Chọn trạm hoặc album trong khu"
+          value=""
+          onChange={(e) => onInspect(e.target.value)}
+        >
           <option value="" disabled>
-            Album trong khu
+            Trạm và album
           </option>
-          {stops.map(({ event }) => (
+          {zone.events.map((event) => (
             <option key={event.id} value={event.id}>
               {event.title}
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          className="memory-auto"
+          aria-pressed={autoFly}
+          onKeyDown={(event) => {
+            if (event.code === 'Space') event.stopPropagation();
+          }}
+          onClick={onAutoFly}
+        >
+          Bay tự động <span aria-hidden="true">{autoFly ? '· Bật' : '· Tắt'}</span>
+        </button>
         <details>
           <summary>Tùy chọn</summary>
           <label>
@@ -85,14 +104,24 @@ export function MemoryNavigation({
           </button>
         </details>
       </section>
+      {nearby && (
+        <button
+          type="button"
+          className="memory-nearby"
+          title="E · Quan sát trạm"
+          onClick={() => onInspect(nearby.event.id)}
+        >
+          <span aria-hidden="true">↗</span> {nearby.event.title}
+        </button>
+      )}
       <section className="memory-controls" aria-label="Điều khiển cỗ máy">
-        <button type="button" onClick={() => onMove(-7)} disabled={z >= FLIGHT_START} title="S · Lùi">
+        <button type="button" onClick={() => onMove(-7)} title="S · Lùi">
           ← Lùi
         </button>
         <button type="button" onClick={onStop} title="Space · Dừng">
           Dừng
         </button>
-        <button type="button" onClick={() => onMove(7)} disabled={z <= FLIGHT_END} title="W · Tiến">
+        <button type="button" onClick={() => onMove(7)} title="W · Tiến">
           Tiến →
         </button>
         <button type="button" onClick={onView} title="M · Đổi camera">

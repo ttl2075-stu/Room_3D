@@ -30,13 +30,15 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 **Trong triển lãm:**
 
-- Giữ W/S để tiến/lùi dọc trục Z. Dùng con lăn hoặc các nút **Tiến** và **Lùi** trên màn hình để di chuyển từng đoạn. Space hoặc nút **Dừng** dừng cỗ máy.
+- Cỗ máy bắt đầu **Bay tự động** khi lên tàu và tiếp tục qua các vòng. Dùng nút **Bay tự động** để bật hoặc tắt. Cỗ máy dừng chế độ này khi điều khiển thủ công, chọn khu hoặc xem trạm. Với tùy chọn giảm chuyển động, hãy bật chế độ này khi muốn tự bay.
+- Giữ W/S để tiến/lùi dọc trục Z. Dùng con lăn hoặc các nút **Tiến** và **Lùi** trên màn hình để di chuyển từng đoạn. Space hoặc nút **Dừng** dừng cỗ máy. Bay tiếp qua Meme Archive sẽ nối sang Học tập & Giảng dạy. Khi bay lùi, đường nối hoạt động theo chiều ngược lại. Thanh tiến độ hiển thị vị trí trong vòng hiện tại.
 - M đổi giữa camera **Theo sau** và **Chính diện**. Dùng hai nút nhìn trái/phải để quan sát khung ảnh dọc hai bên.
 - Chọn **Bay đến khu** để di chuyển đến một trong 7 khu ngay trong đường hầm. **Tùy chọn → Giảm chuyển động** rút ngắn chuyển động khi chọn khu.
-- Nhấp khung 3D hoặc chọn **Album trong khu**. Cỗ máy dừng tại chỗ khi album mở. Dùng nút Trước/Sau, phím mũi tên hoặc vuốt ngang trên ảnh để xem các mục. Esc đóng album.
+- Nhấp khung 3D, nhấn E khi gần trạm hoặc dùng danh sách **Trạm và album** để chuyển camera sang góc quan sát. Chọn **Xem album** để xem toàn bộ, hoặc nhấp ảnh trong góc quan sát để mở ảnh/video đã chọn. Esc hoặc **Tiếp tục bay** đưa camera về góc bay trước đó.
+- Dùng nút Trước/Sau, phím mũi tên hoặc vuốt ngang trên ảnh trong album. Những hoạt động chưa có media công khai vẫn có album cục bộ.
 - **Tùy chọn → Về phòng Nobita** đưa bạn về phòng.
 
-**Ảnh và video công khai** đọc từ `public/media/` qua manifest `src/time-journey/memory-manifest.json`. Thư mục `public/memories/` chứa ảnh xem trước, poster video và bản JPEG tương thích trình duyệt cho các tệp HEIC. Cấu hình nhóm và ánh xạ tên thư mục nằm trong `memory-data.ts`. Khi cập nhật media, chạy:
+**Ảnh và video công khai** đọc từ `public/media/` qua manifest `src/time-journey/memory-manifest.json`. Thư mục `public/memories/` chứa thumbnail tối đa 480 × 360, preview ảnh chủ đạo tối đa 960 × 720, poster video và bản JPEG tương thích trình duyệt cho các tệp HEIC. Cấu hình nhóm và ánh xạ tên thư mục nằm trong `memory-data.ts`. Khi cập nhật media, chạy:
 
 ```powershell
 python -m pip install Pillow pillow-heif imageio-ffmpeg
@@ -44,6 +46,12 @@ python scripts/build-memory-media.py
 ```
 
 **Ảnh cục bộ** lưu bằng IndexedDB trên trình duyệt đã tải ảnh. Mở ảnh để sửa tiêu đề, mô tả hoặc xóa ảnh. Để tìm ảnh tải lên trước bản triển lãm, chọn **Tùy chọn → Ảnh đã lưu trước đây**. Chọn hoạt động rồi bấm **Gán ảnh** để chuyển ảnh vào album tương ứng. Dữ liệu đọc từ cùng cơ sở dữ liệu và cùng nguồn web (giao thức, tên miền, cổng) đã dùng để lưu ảnh.
+
+Dùng `python scripts/build-memory-media.py --force` khi thay nội dung tệp media và giữ nguyên tên.
+
+Ảnh đầu tiên trong mỗi danh sách của `src/time-journey/memory-curation.json` là ảnh chủ đạo, các mục tiếp theo là preview ưu tiên. Mã của ảnh là tên tệp thumbnail bỏ đuôi `.webp`. Nếu không khai báo, trạm dùng cover album.
+
+Bộ ảnh chụp bốn bố cục desktop và mobile nằm trong [docs/memory-constellation](docs/memory-constellation/README.md).
 
 ## Góc lời chúc
 

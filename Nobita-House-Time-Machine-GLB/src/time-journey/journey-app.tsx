@@ -10,7 +10,13 @@ import { WishWall, wishFrame } from '../wishes/wall';
 import { Gallery } from './gallery';
 import { FlightScene, newShip, nudgeFlight, type ShipPose, stopFlight, travelTo } from './guided-flight';
 import { MemoryExhibition } from './memory-exhibition';
-import { FLIGHT_START } from './memory-layout';
+import {
+  closestLoopZ,
+  type EventPlacement,
+  FLIGHT_START,
+  MEMORY_STATIONS,
+  nearbyStation,
+} from './memory-layout';
 import { MemoryNavigation } from './memory-navigation';
 import { TimeTunnel } from './tunnel';
 import '../styles/journey.css';
@@ -151,6 +157,7 @@ function CameraDirector({
   paused,
   peek,
   lowMotion,
+  station,
 }: {
   phase: Phase;
   ship: { current: ShipPose };
@@ -159,6 +166,7 @@ function CameraDirector({
   paused: boolean;
   peek: number;
   lowMotion: boolean;
+  station?: EventPlacement;
 }) {
   const { camera, gl, size } = useThree();
   const reducedMotion = useReducedMotionRef();
@@ -256,6 +264,9 @@ function CameraDirector({
   const currentView = useRef<Phase | null>(null);
   const flightEye = useMemo(() => new THREE.Vector3(), []);
   const flightAim = useMemo(() => new THREE.Vector3(), []);
+  const focusBlend = useRef(0);
+  const focusEye = useMemo(() => new THREE.Vector3(), []);
+  const focusAim = useMemo(() => new THREE.Vector3(), []);
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
     if (phase !== 'flight') {
@@ -310,15 +321,39 @@ function CameraDirector({
         z + (front ? (narrow ? -12 : -8.7) : narrow ? 17 : 12),
       );
       flightAim.set(peek * 4.5, y + 0.9, z + (front ? 0 : -4));
-      if (currentView.current !== 'flight' || lowMotion || reducedMotion.current) {
+      const immediate = lowMotion || reducedMotion.current;
+      if (station) {
+        const aspect = Math.max(0.24, size.width / Math.max(1, size.height));
+        const tangent = Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV / 2));
+        const distance = Math.max(
+          station.width / (2 * tangent * aspect * 0.85),
+          station.height / (2 * tangent * 0.72),
+          6.8,
+        );
+        const targetY = station.y + (station.height - station.frameHeight) / 2 - 0.14;
+        const stationZ = closestLoopZ(station.z, z);
+        focusAim.set(station.x, targetY, stationZ);
+        focusEye.set(
+          station.side * Math.max(3.35, Math.abs(station.x) - distance * Math.abs(Math.sin(station.yaw))),
+          targetY + 0.34,
+          stationZ + distance * Math.cos(station.yaw) + 0.85,
+        );
+      }
+      const blend = station ? 1 : 0;
+      focusBlend.current = immediate ? blend : THREE.MathUtils.damp(focusBlend.current, blend, 5.6, dt);
+      if (Math.abs(focusBlend.current - blend) < 0.002) focusBlend.current = blend;
+      flightEye.lerp(focusEye, focusBlend.current);
+      flightAim.lerp(focusAim, focusBlend.current);
+      if (currentView.current !== 'flight' || immediate) {
         camera.position.copy(flightEye);
         lookRef.current.copy(flightAim);
       } else {
-        // Z tracks the ship directly, even during a rapid menu jump. Ease only the framing.
         camera.position.lerp(flightEye, 1 - Math.exp(-7 * dt));
         lookRef.current.lerp(flightAim, 1 - Math.exp(-8 * dt));
-        camera.position.z = flightEye.z;
-        lookRef.current.z = flightAim.z;
+        if (!focusBlend.current) {
+          camera.position.z = flightEye.z;
+          lookRef.current.z = flightAim.z;
+        }
       }
     }
     currentView.current = phase;
@@ -345,8 +380,11 @@ export default function TimeJourney() {
   const [unlockedRecipients, setUnlockedRecipients] = useState<ReadonlySet<string>>(() => new Set());
   const [warp, setWarp] = useState(false);
   const [album, setAlbum] = useState<{ id: string; src?: string } | null>(null);
+  const [inspection, setInspection] = useState<{ station: EventPlacement; src?: string } | null>(null);
+  const pendingStation = useRef<{ station: EventPlacement; src?: string } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('chase');
   const [z, setZ] = useState(FLIGHT_START);
+  const [autoFly, setAutoFly] = useState(false);
   const [peek, setPeek] = useState(0);
   const [lowMotion, setLowMotion] = useState(
     () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -358,21 +396,28 @@ export default function TimeJourney() {
   const ship = useRef<ShipPose>(newShip());
   const timers = useRef<number[]>([]);
 
+  const stop = useCallback(() => {
+    setAutoFly(false);
+    pendingStation.current = null;
+    stopFlight(ship.current);
+  }, []);
   const board = useCallback(() => {
     if (phase !== 'room') return;
     setWishGallery(false);
     setWish(null);
+    setAutoFly(!lowMotion && !reducedMotion.current);
     setPhase('boarding');
     setWarp(true);
     // A full-screen door glow conceals renderer handover; room itself does not move.
     timers.current.push(window.setTimeout(() => setPhase('flight'), 1400));
     timers.current.push(window.setTimeout(() => setWarp(false), 2080));
-  }, [phase]);
+  }, [phase, lowMotion, reducedMotion]);
   const returnRoom = useCallback(() => {
     setAlbum(null);
+    setInspection(null);
     setWarp(true);
     flightInputLocked.current = true;
-    stopFlight(ship.current);
+    stop();
     timers.current.push(
       window.setTimeout(() => {
         setPhase('room');
@@ -384,7 +429,7 @@ export default function TimeJourney() {
       }, 600),
     );
     timers.current.push(window.setTimeout(() => setWarp(false), 1300));
-  }, []);
+  }, [stop]);
   useEffect(
     () => () => {
       for (const timer of timers.current) window.clearTimeout(timer);
@@ -401,15 +446,44 @@ export default function TimeJourney() {
     return () => window.removeEventListener('keydown', close);
   }, [wishGallery, wish]);
 
-  const openAlbum = useCallback((id: string, src?: string) => {
-    if (flightInputLocked.current) return;
-    stopFlight(ship.current);
-    flightInputLocked.current = true;
-    setAlbum({ id, src });
-  }, []);
+  const openAlbum = useCallback(
+    (id: string, src?: string) => {
+      if (flightInputLocked.current) return;
+      stop();
+      flightInputLocked.current = true;
+      setAlbum({ id, src });
+    },
+    [stop],
+  );
   const closeAlbum = useCallback(() => {
     flightInputLocked.current = false;
     setAlbum(null);
+    setInspection(null);
+  }, []);
+  const inspectStation = useCallback(
+    (station: EventPlacement, src?: string) => {
+      if (flightInputLocked.current) return;
+      stop();
+      if (inspection?.station === station) {
+        openAlbum(station.event.id, src);
+      } else if (
+        Math.abs(closestLoopZ(station.arrival, ship.current.position.z) - ship.current.position.z) <= 13
+      ) {
+        setInspection({ station, src });
+      } else {
+        pendingStation.current = { station, src };
+        travelTo(ship.current, station.arrival, lowMotion || reducedMotion.current);
+      }
+    },
+    [inspection, lowMotion, openAlbum, reducedMotion, stop],
+  );
+  const updatePosition = useCallback((next: number) => {
+    setZ(next);
+    const pending = pendingStation.current;
+    if (pending && !ship.current.trip && Math.abs(closestLoopZ(pending.station.arrival, next) - next) < 0.1) {
+      pendingStation.current = null;
+      setInspection(pending);
+    }
   }, []);
   const toggleView = useCallback(() => {
     setPeek(0);
@@ -419,6 +493,10 @@ export default function TimeJourney() {
     if (phase !== 'flight' || album !== null) return;
     const down = (event: KeyboardEvent) => {
       if (flightInputLocked.current || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (inspection) {
+        if (event.key === 'Escape') setInspection(null);
+        return;
+      }
       if (
         event.target instanceof HTMLElement &&
         event.target.closest('select,input,textarea,[contenteditable]')
@@ -426,10 +504,16 @@ export default function TimeJourney() {
         return;
       if (['KeyW', 'KeyS', 'Space'].includes(event.code)) event.preventDefault();
       const current = ship.current;
-      if (event.code === 'Space') stopFlight(current);
+      if (event.code === 'Space') stop();
+      if (event.code === 'KeyE' && !event.repeat) {
+        const station = nearbyStation(current.position.z);
+        if (station) inspectStation(station);
+      }
       if (event.code === 'KeyM' && !event.repeat) toggleView();
       if (event.code === 'KeyW' || event.code === 'KeyS') {
         if (event.repeat) return;
+        setAutoFly(false);
+        pendingStation.current = null;
         current.target = null;
         current.trip = null;
         current.keys.add(event.code);
@@ -438,11 +522,19 @@ export default function TimeJourney() {
     const up = (event: KeyboardEvent) => {
       ship.current.keys.delete(event.code);
     };
-    const clear = () => stopFlight(ship.current);
+    const clear = stop;
     const wheel = (event: WheelEvent) => {
-      if (flightInputLocked.current || event.ctrlKey || !(event.target instanceof HTMLCanvasElement)) return;
+      if (
+        flightInputLocked.current ||
+        inspection ||
+        event.ctrlKey ||
+        !(event.target instanceof HTMLCanvasElement)
+      )
+        return;
       event.preventDefault();
+      setAutoFly(false);
       const scale = event.deltaMode === 1 ? 0.8 : event.deltaMode === 2 ? 7 : 0.07;
+      pendingStation.current = null;
       nudgeFlight(ship.current, THREE.MathUtils.clamp(event.deltaY * scale, -12, 12));
     };
     window.addEventListener('keydown', down);
@@ -450,13 +542,13 @@ export default function TimeJourney() {
     window.addEventListener('blur', clear);
     window.addEventListener('wheel', wheel, { passive: false });
     return () => {
-      clear();
+      ship.current.keys.clear();
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
       window.removeEventListener('blur', clear);
       window.removeEventListener('wheel', wheel);
     };
-  }, [phase, album, toggleView]);
+  }, [phase, album, inspection, inspectStation, stop, toggleView]);
 
   useEffect(() => {
     document.body.removeAttribute('aria-busy');
@@ -506,6 +598,7 @@ export default function TimeJourney() {
           paused={wish !== null}
           peek={peek}
           lowMotion={lowMotion}
+          station={inspection?.station}
         />
         {phase !== 'flight' && !wishGallery && (
           <WorldLabels anchors={DESK_LABELS} buttons={worldButtons} distanceFactor={3.6} />
@@ -519,14 +612,15 @@ export default function TimeJourney() {
           />
         ) : (
           <Suspense fallback={null}>
-            <TimeTunnel />
+            <TimeTunnel inspecting={inspection !== null} />
             <FlightScene
               lowMotion={lowMotion}
+              autoFly={autoFly && !warp}
               ship={ship}
-              locked={album !== null || flightInputLocked.current}
-              onPosition={setZ}
+              locked={album !== null || inspection !== null || flightInputLocked.current}
+              onPosition={updatePosition}
             />
-            <MemoryExhibition onOpen={openAlbum} />
+            <MemoryExhibition focusId={inspection?.station.event.id} onSelect={inspectStation} />
             <SceneReady scene="flight" onReady={setReadyScene} />
           </Suspense>
         )}
@@ -582,32 +676,64 @@ export default function TimeJourney() {
             {phase === 'flight' ? 'Đang tải cỗ máy thời gian…' : 'Đang dựng phòng Nobita…'}
           </div>
         )}
-        {phase === 'flight' && !warp && (
+        {phase === 'flight' && !warp && !inspection && (
           <MemoryNavigation
             z={z}
             view={viewMode}
             peek={peek}
             reduced={lowMotion}
+            autoFly={autoFly}
+            onAutoFly={() => {
+              stop();
+              if (!autoFly) setAutoFly(true);
+            }}
             onReduced={(value) => {
               setLowMotion(value);
+              if (value && autoFly) stop();
               if (value && ship.current.trip) travelTo(ship.current, ship.current.trip.to, true);
             }}
             onZone={(target) => {
+              stop();
               setPeek(0);
               setViewMode('chase');
               travelTo(ship.current, target, lowMotion || reducedMotion.current);
             }}
-            onMove={(distance) => nudgeFlight(ship.current, distance)}
-            onStop={() => stopFlight(ship.current)}
+            onMove={(distance) => {
+              setAutoFly(false);
+              pendingStation.current = null;
+              nudgeFlight(ship.current, distance);
+            }}
+            onStop={stop}
             onView={toggleView}
             onPeek={(side) => {
               setViewMode('chase');
               setPeek((previous) => (previous === side ? 0 : side));
             }}
-            onOpen={openAlbum}
+            onInspect={(id) => {
+              const station = MEMORY_STATIONS.find(({ event }) => event.id === id);
+              if (station) inspectStation(station);
+              else openAlbum(id);
+            }}
             onLegacy={() => openAlbum('legacy')}
             onReturn={returnRoom}
           />
+        )}
+        {inspection && (
+          <section className="memory-focus-controls" aria-label={inspection.station.event.title}>
+            <button type="button" onClick={() => setInspection(null)}>
+              ← Tiếp tục bay
+            </button>
+            <button type="button" onClick={() => openAlbum(inspection.station.event.id)}>
+              Xem album
+            </button>
+            {inspection.src && (
+              <button type="button" onClick={() => openAlbum(inspection.station.event.id, inspection.src)}>
+                {inspection.station.event.videos.some(({ src }) => src === inspection.src)
+                  ? 'Xem video'
+                  : 'Xem ảnh'}
+              </button>
+            )}
+          </section>
         )}
       </div>
       <div className={`journey-warp ${warp ? 'visible' : ''}`} aria-hidden="true">

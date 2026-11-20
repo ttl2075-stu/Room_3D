@@ -2,7 +2,7 @@ import { useFrame } from '@react-three/fiber';
 import { memo, useRef } from 'react';
 import * as THREE from 'three';
 
-import { FLIGHT_END, FLIGHT_START } from './memory-layout';
+import { closestLoopZ, FLIGHT_END, FLIGHT_START } from './memory-layout';
 
 function FloatingClock({ index }: { index: number }) {
   const group = useRef<THREE.Group>(null);
@@ -10,10 +10,11 @@ function FloatingClock({ index }: { index: number }) {
   const radius = 7.7 + (index % 3) * 0.72;
   const x = Math.cos(angle) * radius;
   const y = 8.8 + Math.sin(angle) * 1.2;
-  const z = THREE.MathUtils.lerp(FLIGHT_START, FLIGHT_END, index / 17);
+  const z = THREE.MathUtils.lerp(FLIGHT_START, FLIGHT_END, index / 18);
   useFrame(({ camera, clock }) => {
     if (!group.current) return;
-    group.current.visible = Math.abs(camera.position.z - z) < 62;
+    group.current.position.z = closestLoopZ(z, camera.position.z);
+    group.current.visible = Math.abs(camera.position.z - group.current.position.z) < 62;
     if (!group.current.visible) return;
     group.current.rotation.y = Math.sin(clock.elapsedTime * 0.3 + index) * 0.23;
     group.current.rotation.z = Math.sin(clock.elapsedTime * 0.42 + index * 0.9) * 0.17;
@@ -122,7 +123,27 @@ function GalaxySky() {
   );
 }
 
-function TimeTunnelModel() {
+function TrackLight({
+  position,
+  color,
+  intensity,
+  distance,
+}: {
+  position: [number, number, number];
+  color: string;
+  intensity: number;
+  distance: number;
+}) {
+  const light = useRef<THREE.PointLight>(null);
+  useFrame(({ camera }) => {
+    if (light.current) light.current.position.z = closestLoopZ(position[2], camera.position.z);
+  });
+  return (
+    <pointLight ref={light} position={position} color={color} intensity={intensity} distance={distance} />
+  );
+}
+
+function TimeTunnelModel({ inspecting }: { inspecting: boolean }) {
   return (
     <group name="galaxy-time-space">
       <GalaxySky />
@@ -135,13 +156,15 @@ function TimeTunnelModel() {
         castShadow
         shadow-mapSize={[2048, 2048]}
       />
-      <pointLight position={[0, 2, 8]} color="#90dbff" intensity={60} distance={25} />
-      <pointLight position={[1, 5, -46]} color="#c7f9ef" intensity={50} distance={28} />
-      <pointLight position={[-3, 0, -85]} color="#ffe6a4" intensity={46} distance={27} />
-      {Array.from({ length: 18 }, (_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: Fixed clock positions never reorder.
-        <FloatingClock key={`clock-${i}`} index={i} />
-      ))}
+      <TrackLight position={[0, 2, 8]} color="#90dbff" intensity={60} distance={25} />
+      <TrackLight position={[1, 5, -46]} color="#c7f9ef" intensity={50} distance={28} />
+      <TrackLight position={[-3, 0, -85]} color="#ffe6a4" intensity={46} distance={27} />
+      <group visible={!inspecting}>
+        {Array.from({ length: 18 }, (_, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: Fixed clock positions never reorder.
+          <FloatingClock key={`clock-${i}`} index={i} />
+        ))}
+      </group>
     </group>
   );
 }

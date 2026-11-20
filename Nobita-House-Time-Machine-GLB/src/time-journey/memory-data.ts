@@ -1,12 +1,18 @@
+import curation from './memory-curation.json';
 import manifest from './memory-manifest.json';
 
 export interface MemoryMedia {
   kind: 'image' | 'video';
   src: string;
   preview: string;
+  width: number;
+  height: number;
+  featurePreview?: string;
 }
 
-type Layout = 'gallery' | 'research' | 'showcase' | 'landscape' | 'polaroid' | 'milestone' | 'screens';
+export type MemoryLayout = 'hero' | 'editorial' | 'collage' | 'showcase';
+
+const curatedMedia: Record<string, string[]> = curation;
 
 export interface MemoryEvent {
   id: string;
@@ -17,7 +23,9 @@ export interface MemoryEvent {
   cover?: MemoryMedia;
   images: MemoryMedia[];
   videos: MemoryMedia[];
-  layout: Layout;
+  layout: MemoryLayout;
+  featuredMediaId?: string;
+  previewMediaIds?: string[];
 }
 
 export interface MemoryZone {
@@ -29,14 +37,14 @@ export interface MemoryZone {
 }
 
 type Folder = keyof typeof manifest;
-type EventSpec = [id: string, title: string, folder?: Folder];
+type EventSpec = [id: string, title: string, folder?: Folder, layoutOverride?: MemoryLayout];
 
 function zone(
   id: string,
   title: string,
   color: string,
   length: number,
-  layout: Layout,
+  layout: MemoryLayout,
   specs: EventSpec[],
 ): MemoryZone {
   return {
@@ -44,7 +52,7 @@ function zone(
     title,
     color,
     length,
-    events: specs.map(([eventId, eventTitle, folder]) => {
+    events: specs.map(([eventId, eventTitle, folder, layoutOverride]) => {
       const media = folder ? manifest[folder] : [];
       const images = media
         .filter(({ kind }) => kind === 'image')
@@ -56,7 +64,9 @@ function zone(
         id: eventId,
         zoneId: id,
         title: eventTitle,
-        layout,
+        layout: layoutOverride ?? layout,
+        featuredMediaId: curatedMedia[eventId]?.[0],
+        previewMediaIds: curatedMedia[eventId]?.slice(1),
         cover: images[0] ?? videos[0],
         images,
         videos,
@@ -66,13 +76,13 @@ function zone(
 }
 
 export const MEMORY_ZONES = [
-  zone('learning', 'Học tập & Giảng dạy', '#81c3ff', 18, 'gallery', [
+  zone('learning', 'Học tập & Giảng dạy', '#81c3ff', 18, 'editorial', [
     ['study-seminar', 'Tọa đàm PP học tập và NCKH cho SV', '20260300 - Tọa đàm PP học tập và NCKH cho SV'],
     ['summer-school', 'Trường hè', '20260700 - Trường hè'],
     ['hvan', 'Tập huấn HVAN', '20261110 - Tập huấn HVAN'],
-    ['teaching', 'Các hoạt động thực nghiệm, dạy học'],
+    ['teaching', 'Các hoạt động thực nghiệm, dạy học', undefined, 'showcase'],
   ]),
-  zone('research', 'Nghiên cứu & Học thuật', '#bda2ff', 22, 'research', [
+  zone('research', 'Nghiên cứu & Học thuật', '#bda2ff', 22, 'editorial', [
     ['faculty-research', 'NCKH cấp khoa', '20260400 - NCKH cấp khoa'],
     ['university-research', 'Báo cáo NCKH cấp trường', '20260500 - Báo cáo NCKH cấp trường'],
     ['presentations', 'Thuyết trình mùa 3', '20260600 - Thuyết trình mùa 3'],
@@ -80,17 +90,17 @@ export const MEMORY_ZONES = [
     ['conferences', 'Tham gia các hội nghị, hội thảo', 'Tham gia các hội nghị, hội thảo'],
   ]),
   zone('achievements', 'Thành tựu & Sản phẩm', '#f9de86', 15, 'showcase', [
-    ['certificates', 'Giấy khen, giấy chứng nhận'],
+    ['certificates', 'Giấy khen, giấy chứng nhận', undefined, 'editorial'],
     ['nvsp', 'Triển lãm NVSP-HNUE 2026', '20261117 - Triển lãm NVSP-HNUE 2026'],
     ['projects', 'Media các sản phẩm làm được'],
   ]),
-  zone('journeys', 'Hành trình & Trải nghiệm', '#87e6b1', 18, 'landscape', [
+  zone('journeys', 'Hành trình & Trải nghiệm', '#87e6b1', 18, 'hero', [
     ['tam-dao', 'Tam Đảo', '20251101 - Tam đảo'],
     ['vinh-phuc', 'Vĩnh Phúc', '20241101 - Vĩnh Phúc'],
     ['extracurricular', 'Các hoạt động ngoại khóa'],
-    ['outings', 'Đi chơi', '20260314 - Du xuân'],
+    ['outings', 'Đi chơi', '20260314 - Du xuân', 'collage'],
   ]),
-  zone('celebrations', 'Sinh nhật & Party', '#ff9cc5', 25, 'polaroid', [
+  zone('celebrations', 'Sinh nhật & Party', '#ff9cc5', 25, 'collage', [
     ['thu', 'Sinh nhật Thư', '20260200 - Sinh nhật Minh Thư'],
     ['khoa', 'Sinh nhật Khoa K73', '20260323 - Sinh nhật Khoa K73'],
     ['duy-anh', 'Sinh nhật Duy Anh K74', '20260602 - Sinh nhật Duy Anh K73'],
@@ -99,11 +109,11 @@ export const MEMORY_ZONES = [
     ['nhi', 'Sinh nhật Nhi K73', '20261117 - Sinh nhật Yến Nhi K73'],
     ['party', 'Party', 'Party'],
   ]),
-  zone('milestones', 'Tập thể & Dấu mốc', '#ffbc77', 14, 'milestone', [
+  zone('milestones', 'Tập thể & Dấu mốc', '#ffbc77', 14, 'hero', [
     ['opening', 'Khai giảng 2026', '20260905 - Khai giảng 2026'],
     ['group', 'Hình ảnh tập thể'],
   ]),
-  zone('meme', 'Meme Archive', '#82eef7', 10, 'screens', [['memes', 'Meme', 'Meme']]),
+  zone('meme', 'Meme Archive', '#82eef7', 10, 'showcase', [['memes', 'Meme', 'Meme']]),
 ];
 
 export const MEMORY_EVENTS = MEMORY_ZONES.flatMap(({ events }) => events);

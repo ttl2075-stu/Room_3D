@@ -3,7 +3,9 @@ import { type RefObject, useRef } from 'react';
 import { type Group, MathUtils, Vector3 } from 'three';
 import { useReducedMotionRef } from '../utils/reduced-motion';
 import { TimeMachine } from './machine';
-import { FLIGHT_END, FLIGHT_START } from './memory-layout';
+import { closestLoopZ, FLIGHT_START } from './memory-layout';
+
+const AUTO_SPEED = 5.5;
 
 export interface ShipPose {
   position: Vector3;
@@ -27,28 +29,29 @@ export function stopFlight(ship: ShipPose) {
 export function nudgeFlight(ship: ShipPose, distance: number) {
   ship.trip = null;
   const base = ship.target ?? ship.position.z;
-  const target = MathUtils.clamp(base - distance, ship.position.z - 18, ship.position.z + 18);
-  ship.target = MathUtils.clamp(target, FLIGHT_END, FLIGHT_START);
+  ship.target = MathUtils.clamp(base - distance, ship.position.z - 18, ship.position.z + 18);
 }
 
 export function travelTo(ship: ShipPose, to: number, reduced: boolean) {
   stopFlight(ship);
   const from = ship.position.z;
-  const distance = Math.abs(to - from);
-  if (reduced) ship.position.z = to;
-  else if (distance > 0.01)
-    ship.trip = { from, to, elapsed: 0, duration: MathUtils.clamp(distance / 37, 0.8, 6) };
+  const destination = closestLoopZ(to, from);
+  const distance = Math.abs(destination - from);
+  if (reduced || distance <= 0.01) ship.position.z = destination;
+  else ship.trip = { from, to: destination, elapsed: 0, duration: MathUtils.clamp(distance / 37, 0.8, 6) };
 }
 
 export function FlightScene({
   ship,
   lowMotion,
+  autoFly,
   locked,
   onPosition,
 }: {
   ship: RefObject<ShipPose>;
   locked: boolean;
   lowMotion: boolean;
+  autoFly: boolean;
   onPosition: (z: number) => void;
 }) {
   const group = useRef<Group>(null);
@@ -81,10 +84,11 @@ export function FlightScene({
         }
       } else {
         const throttle = Number(data.keys.has('KeyW')) - Number(data.keys.has('KeyS'));
-        data.speed = MathUtils.damp(data.speed, throttle > 0 ? 13 : throttle * 9, 5, dt);
+        const cruiseSpeed = autoFly ? AUTO_SPEED : 0;
+        const desiredSpeed = throttle === 0 ? cruiseSpeed : throttle > 0 ? 13 : -9;
+        data.speed = MathUtils.damp(data.speed, desiredSpeed, 5, dt);
         if (Math.abs(data.speed) < 0.02) data.speed = 0;
-        data.position.z = MathUtils.clamp(previous - data.speed * dt, FLIGHT_END, FLIGHT_START);
-        if (data.position.z === FLIGHT_END || data.position.z === FLIGHT_START) data.speed = 0;
+        data.position.z = previous - data.speed * dt;
       }
     }
     group.current.position.copy(data.position);

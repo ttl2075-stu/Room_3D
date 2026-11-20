@@ -1,27 +1,28 @@
+import { useThree } from '@react-three/fiber';
 import { useEffect, useState } from 'react';
-import { CanvasTexture, SRGBColorSpace, type Texture } from 'three';
-import type { MemoryMedia } from './memory-data';
+import { CanvasTexture, LinearFilter, LinearMipmapLinearFilter, SRGBColorSpace } from 'three';
+import type { EventPlacement } from './memory-layout';
 
-type Preview = { texture: Texture; aspect: number };
-
-function usePreview(src: string | undefined) {
-  const [preview, setPreview] = useState<Preview | null>(null);
+function usePreview(src: string) {
+  const anisotropy = useThree(({ gl }) => Math.min(8, gl.capabilities.getMaxAnisotropy()));
+  const [preview, setPreview] = useState<CanvasTexture<HTMLImageElement> | null>(null);
   useEffect(() => {
-    setPreview(null);
-    if (!src) return;
-    let texture: Texture | undefined;
+    let texture: CanvasTexture<HTMLImageElement> | undefined;
     const image = new Image();
     image.onload = () => {
       texture = new CanvasTexture(image);
       texture.colorSpace = SRGBColorSpace;
-      setPreview({ texture, aspect: image.naturalWidth / image.naturalHeight });
+      texture.minFilter = LinearMipmapLinearFilter;
+      texture.magFilter = LinearFilter;
+      texture.anisotropy = anisotropy;
+      setPreview(texture);
     };
     image.src = src;
     return () => {
       image.onload = null;
       texture?.dispose();
     };
-  }, [src]);
+  }, [src, anisotropy]);
   return preview;
 }
 
@@ -29,100 +30,116 @@ export function MemoryBillboard({
   title,
   subtitle,
   color,
-  width = 4.4,
+  width,
+  height = width * 0.16,
 }: {
   title: string;
   subtitle: string;
   color: string;
-  width?: number;
+  width: number;
+  height?: number;
 }) {
   const [texture, setTexture] = useState<CanvasTexture | null>(null);
   useEffect(() => {
     const canvas = document.createElement('canvas');
-    canvas.width = 960;
-    canvas.height = 276;
+    canvas.width = 1280;
+    canvas.height = 205;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = '#10182c';
-    ctx.fillRect(0, 0, 960, 276);
-    ctx.fillStyle = color;
-    ctx.fillRect(0, 0, 960, 9);
-    ctx.font = '600 66px system-ui';
+    ctx.shadowColor = '#090c18';
+    ctx.shadowBlur = 12;
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#f6f8ff';
-    ctx.fillText(title, 38, 110, 884);
+    ctx.font = '700 91px "Times New Roman", "Noto Serif", serif';
+    ctx.fillStyle = '#fffbf1';
+    ctx.fillText(title, 9, 70, 1258);
     ctx.fillStyle = color;
-    ctx.font = '500 42px system-ui';
-    ctx.fillText(subtitle, 38, 210, 884);
+    ctx.fillRect(12, 145, 47, 4);
+    ctx.font = '600 41px system-ui';
+    ctx.fillText(subtitle, 77, 148, 1181);
     const label = new CanvasTexture(canvas);
     label.colorSpace = SRGBColorSpace;
     setTexture(label);
     return () => label.dispose();
   }, [title, subtitle, color]);
   return (
-    <mesh>
-      <planeGeometry args={[width, (width * 276) / 960]} />
-      <meshBasicMaterial
-        key={texture ? 'ready' : 'placeholder'}
-        map={texture}
-        color={texture ? '#ffffff' : '#10182c'}
-        toneMapped={false}
-      />
-    </mesh>
+    texture && (
+      <mesh>
+        <planeGeometry args={[width, height]} />
+        <meshBasicMaterial map={texture} transparent depthWrite={false} toneMapped={false} />
+      </mesh>
+    )
   );
 }
 
 export function MemoryPhotoFrame({
-  media,
+  frame,
   color,
-  width,
-  height,
-  hovered,
   polaroid,
+  onSelect,
 }: {
-  media?: MemoryMedia;
+  frame: EventPlacement['frames'][number];
   color: string;
-  width: number;
-  height: number;
-  hovered: boolean;
   polaroid: boolean;
+  onSelect?: () => void;
 }) {
-  const preview = usePreview(media?.preview);
-  const aspect = preview?.aspect ?? 1.5;
-  const photoWidth = Math.min(width - 0.16, (height - 0.2) * aspect);
-  const photoHeight = photoWidth / aspect;
+  const { media, featured, x, y, width, height, matWidth, matHeight, depth, rotation } = frame;
+  const preview = usePreview(featured ? (media.featurePreview ?? media.preview) : media.preview);
+  const [hovered, setHovered] = useState(false);
+  const canvas = useThree(({ gl }) => gl.domElement);
+  useEffect(() => {
+    if (!hovered || !onSelect) return;
+    canvas.style.cursor = 'pointer';
+    return () => {
+      canvas.style.cursor = '';
+    };
+  }, [canvas, hovered, onSelect]);
+  if (!preview) return null;
   return (
-    <group>
+    // biome-ignore lint/a11y/noStaticElementInteractions: The HUD exposes the same station and album.
+    <group
+      position={[x, y, depth]}
+      rotation={[0, 0, rotation]}
+      onPointerOver={
+        onSelect
+          ? (event) => {
+              event.stopPropagation();
+              setHovered(true);
+            }
+          : undefined
+      }
+      onPointerOut={() => setHovered(false)}
+      onClick={
+        onSelect
+          ? (event) => {
+              event.stopPropagation();
+              onSelect();
+            }
+          : undefined
+      }
+    >
+      <mesh position={[0, -0.023, -0.022]}>
+        <planeGeometry args={[matWidth + 0.03, matHeight + 0.04]} />
+        <meshBasicMaterial color="#070b16" transparent opacity={0.7} />
+      </mesh>
       <mesh>
-        <boxGeometry args={[width + 0.08, height + 0.08, 0.09]} />
-        <meshBasicMaterial
-          color={hovered || media?.kind === 'video' ? color : polaroid ? '#eee7ef' : '#536181'}
-        />
+        <planeGeometry args={[matWidth, matHeight]} />
+        <meshBasicMaterial color={hovered ? color : polaroid ? '#f2e8d8' : '#808a9a'} />
       </mesh>
-      <mesh position={[0, 0, 0.05]}>
+      <mesh position={[0, polaroid ? 0.043 : 0, 0.009]}>
         <planeGeometry args={[width, height]} />
-        <meshBasicMaterial color={polaroid ? '#fff4fa' : '#162039'} />
+        <meshBasicMaterial map={preview} toneMapped={false} />
       </mesh>
-      <mesh position={[0, polaroid ? 0.045 : 0, 0.06]}>
-        <planeGeometry args={[photoWidth, photoHeight]} />
-        <meshBasicMaterial
-          key={preview ? 'ready' : 'placeholder'}
-          map={preview?.texture}
-          color={preview ? '#ffffff' : '#263657'}
-          toneMapped={false}
-        />
-      </mesh>
-      {!preview && (
-        <mesh position={[0, 0, 0.07]} rotation={[0, 0, Math.PI / 4]}>
-          <planeGeometry args={[0.24, 0.24]} />
-          <meshBasicMaterial color={color} />
-        </mesh>
-      )}
-      {media?.kind === 'video' && preview && (
-        <mesh position={[0, 0, 0.075]} rotation={[0, 0, Math.PI / 2]}>
-          <circleGeometry args={[0.28, 3]} />
-          <meshBasicMaterial color="#f7f9ff" />
-        </mesh>
+      {media.kind === 'video' && (
+        <group position={[width / 2 - 0.23, -height / 2 + 0.22, 0.019]}>
+          <mesh>
+            <circleGeometry args={[0.14, 24]} />
+            <meshBasicMaterial color="#171c27" transparent opacity={0.85} />
+          </mesh>
+          <mesh position={[0.014, 0, 0.004]}>
+            <circleGeometry args={[0.073, 3]} />
+            <meshBasicMaterial color="#fff7e6" />
+          </mesh>
+        </group>
       )}
     </group>
   );
