@@ -2,71 +2,81 @@ import { useFrame } from '@react-three/fiber';
 import { memo, useRef } from 'react';
 import * as THREE from 'three';
 
-export const PORTALS = [
-  { title: 'Ngày đầu gặp gỡ', date: 'Hồi ức 01', color: '#7fe1ff', position: [-3.25, 2.1, -25] as [number,number,number] },
-  { title: 'Những chuyến đi', date: 'Hồi ức 02', color: '#ffe19a', position: [3.2, 2.1, -50] as [number,number,number] },
-  { title: 'Khoảnh khắc đẹp', date: 'Hồi ức 03', color: '#a4f4cb', position: [-3.25, 2.1, -75] as [number,number,number] },
-  { title: 'Lời hẹn tương lai', date: 'Hồi ức 04', color: '#ffb9c1', position: [3.2, 2.1, -100] as [number,number,number] },
-];
+import { FLIGHT_END, FLIGHT_START } from './memory-layout';
 
 function FloatingClock({ index }: { index: number }) {
   const group = useRef<THREE.Group>(null);
   const angle = index * 2.39996;
-  const radius = 5.7 + (index % 3) * 0.72;
+  const radius = 7.7 + (index % 3) * 0.72;
   const x = Math.cos(angle) * radius;
-  const y = 2.1 + Math.sin(angle) * radius * 0.71;
-  const z = 2 - index * 4.3;
-  useFrame(({ clock }) => {
+  const y = 8.8 + Math.sin(angle) * 1.2;
+  const z = THREE.MathUtils.lerp(FLIGHT_START, FLIGHT_END, index / 17);
+  useFrame(({ camera, clock }) => {
     if (!group.current) return;
+    group.current.visible = Math.abs(camera.position.z - z) < 62;
+    if (!group.current.visible) return;
     group.current.rotation.y = Math.sin(clock.elapsedTime * 0.3 + index) * 0.23;
     group.current.rotation.z = Math.sin(clock.elapsedTime * 0.42 + index * 0.9) * 0.17;
     group.current.position.y = y + Math.sin(clock.elapsedTime * 0.7 + index) * 0.24;
   });
-  return <group ref={group} position={[x,y,z]} rotation={[0,(index%4)*0.17,0]}>
-    <mesh castShadow rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.56,0.56,0.15,36]}/><meshStandardMaterial color={index%2 ? '#efb56f':'#76b7da'} roughness={0.42}/></mesh>
-    {[0, Math.PI].map((rotation) => (
-      <group key={rotation} rotation={[0, rotation, 0]}>
-    <mesh position={[0,0,0.084]}><circleGeometry args={[0.48,36]}/><meshBasicMaterial color="#fffcf2"/></mesh>
-    {Array.from({length:12},(_,i)=><mesh key={i} position={[Math.sin(i*Math.PI/6)*0.39,Math.cos(i*Math.PI/6)*0.39,0.092]}>
-      <sphereGeometry args={[0.021,6,6]}/><meshBasicMaterial color="#294d66"/></mesh>)}
-    <mesh position={[0.09,0.055,0.106]} rotation={[0,0,-0.6]}><boxGeometry args={[0.028,0.24,0.02]}/><meshBasicMaterial color="#225479"/></mesh>
-    <mesh position={[-0.06,0.045,0.110]} rotation={[0,0,0.9]}><boxGeometry args={[0.022,0.33,0.02]}/><meshBasicMaterial color="#c35f5e"/></mesh>
-      </group>
-    ))}
-  </group>;
-}
-
-function MemoryDoor({ index, onSelect }: { index: number; onSelect: (index:number)=>void }) {
-  const door = PORTALS[index];
-  if (!door) return null;
-  return <group position={door.position} onClick={(event) => {event.stopPropagation();onSelect(index);}}>
-    <mesh castShadow position={[0,0,0]}>
-      <boxGeometry args={[2.2,3.65,0.28]}/>
-      <meshStandardMaterial color="#f7fcff" roughness={0.34} emissive={door.color} emissiveIntensity={0.17}/>
-    </mesh>
-    <mesh position={[0,0,0.17]}><planeGeometry args={[1.88,3.28]}/><meshBasicMaterial color={door.color} side={THREE.DoubleSide} toneMapped={false}/></mesh>
-    <mesh position={[0,0,0.185]}><planeGeometry args={[1.55,2.95]}/><meshBasicMaterial color="#effaff" transparent opacity={0.32} depthWrite={false}/></mesh>
-    <mesh position={[0,0,0.22]}><torusGeometry args={[1.66,0.07,12,64]}/><meshBasicMaterial color={door.color} side={THREE.DoubleSide} toneMapped={false}/></mesh>
-    <mesh position={[0.73,-0.14,0.24]}><sphereGeometry args={[0.09,16,12]}/><meshStandardMaterial color="#e6af52"/></mesh>
-    <pointLight color={door.color} intensity={8} distance={9} position={[0,0,0.6]}/>
-  </group>;
+  return (
+    <group ref={group} position={[x, y, z]} rotation={[0, (index % 4) * 0.17, 0]}>
+      <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.56, 0.56, 0.15, 36]} />
+        <meshStandardMaterial color={index % 2 ? '#efb56f' : '#76b7da'} roughness={0.42} />
+      </mesh>
+      {[0, Math.PI].map((rotation) => (
+        <group key={rotation} rotation={[0, rotation, 0]}>
+          <mesh position={[0, 0, 0.084]}>
+            <circleGeometry args={[0.48, 36]} />
+            <meshBasicMaterial color="#fffcf2" />
+          </mesh>
+          {Array.from({ length: 12 }, (_, i) => (
+            <mesh
+              // biome-ignore lint/suspicious/noArrayIndexKey: Fixed clock tick marks never reorder.
+              key={i}
+              position={[Math.sin((i * Math.PI) / 6) * 0.39, Math.cos((i * Math.PI) / 6) * 0.39, 0.092]}
+            >
+              <sphereGeometry args={[0.021, 6, 6]} />
+              <meshBasicMaterial color="#294d66" />
+            </mesh>
+          ))}
+          <mesh position={[0.09, 0.055, 0.106]} rotation={[0, 0, -0.6]}>
+            <boxGeometry args={[0.028, 0.24, 0.02]} />
+            <meshBasicMaterial color="#225479" />
+          </mesh>
+          <mesh position={[-0.06, 0.045, 0.11]} rotation={[0, 0, 0.9]}>
+            <boxGeometry args={[0.022, 0.33, 0.02]} />
+            <meshBasicMaterial color="#c35f5e" />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
 }
 
 /** Camera-centred sky: direction-based noise has no panorama seam or open ends. */
 function GalaxySky() {
   const sky = useRef<THREE.Mesh>(null);
-  useFrame(({ camera }) => { sky.current?.position.copy(camera.position); });
-  return <mesh ref={sky} frustumCulled={false} renderOrder={-100}>
-    <sphereGeometry args={[220, 48, 32]} />
-    <shaderMaterial side={THREE.BackSide} depthWrite={false} depthTest={false} toneMapped={false}
-      vertexShader={`
+  useFrame(({ camera }) => {
+    sky.current?.position.copy(camera.position);
+  });
+  return (
+    <mesh ref={sky} frustumCulled={false} renderOrder={-100}>
+      <sphereGeometry args={[220, 48, 32]} />
+      <shaderMaterial
+        side={THREE.BackSide}
+        depthWrite={false}
+        depthTest={false}
+        toneMapped={false}
+        vertexShader={`
         varying vec3 vDirection;
         void main() {
           vDirection = position;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `}
-      fragmentShader={`
+        fragmentShader={`
         varying vec3 vDirection;
         float hash(vec3 p) {
           p = fract(p * .3183099 + vec3(.11, .37, .73));
@@ -107,22 +117,33 @@ function GalaxySky() {
           #include <colorspace_fragment>
         }
       `}
-    />
-  </mesh>;
+      />
+    </mesh>
+  );
 }
 
-function TimeTunnelModel({ onSelect }: { onSelect:(index:number)=>void }) {
-  return <group name="galaxy-time-space">
-    <GalaxySky />
-    <ambientLight intensity={0.78} color="#bdeeff"/>
-    <hemisphereLight intensity={1.4} args={['#f0fcff','#163f65',1.4]}/>
-    <directionalLight position={[5,10,6]} intensity={2.2} color="#ffffff" castShadow shadow-mapSize={[2048,2048]}/>
-    <pointLight position={[0,2,8]} color="#90dbff" intensity={60} distance={25}/>
-    <pointLight position={[1,5,-46]} color="#c7f9ef" intensity={50} distance={28}/>
-    <pointLight position={[-3,0,-85]} color="#ffe6a4" intensity={46} distance={27}/>
-    {Array.from({length:30},(_,i)=><FloatingClock key={`clock-${i}`} index={i}/>)}
-    {PORTALS.map((_,i)=><MemoryDoor key={i} index={i} onSelect={onSelect}/>)}
-  </group>;
+function TimeTunnelModel() {
+  return (
+    <group name="galaxy-time-space">
+      <GalaxySky />
+      <ambientLight intensity={0.78} color="#bdeeff" />
+      <hemisphereLight intensity={1.4} args={['#f0fcff', '#163f65', 1.4]} />
+      <directionalLight
+        position={[5, 10, 6]}
+        intensity={2.2}
+        color="#ffffff"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+      />
+      <pointLight position={[0, 2, 8]} color="#90dbff" intensity={60} distance={25} />
+      <pointLight position={[1, 5, -46]} color="#c7f9ef" intensity={50} distance={28} />
+      <pointLight position={[-3, 0, -85]} color="#ffe6a4" intensity={46} distance={27} />
+      {Array.from({ length: 18 }, (_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: Fixed clock positions never reorder.
+        <FloatingClock key={`clock-${i}`} index={i} />
+      ))}
+    </group>
+  );
 }
 
 // Memoised: telemetry HUD updates must not regenerate tube geometry / clocks every frame.

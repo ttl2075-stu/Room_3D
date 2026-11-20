@@ -28,16 +28,22 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 **Bắt đầu:** camera đứng trong phòng Nobita thật, bàn học ở phía trước. Nhấn trực tiếp vào ngăn bàn/nhãn 3D hoặc nút “Mở ngăn bàn · Lên cỗ máy”. Camera tiến tới bàn, hiệu ứng mở cổng xuất hiện, sau đó lên cỗ máy trong đường hầm.
 
-**Trong đường hầm:**
+**Trong triển lãm:**
 
-- W/S: tiến/lùi; A/D hoặc ←/→: quay; ↑/↓: ngẩng/cúi.
-- R/F: lên/xuống; Q/Z: nghiêng; V: cân bằng; Space: phanh.
-- M: đổi camera trước/sau để ngắm nhân vật.
-- Phím 1–4 hoặc nút Bay đến: tự bay đến cửa ký ức.
-- E khi ở gần cửa, nút Xem, hoặc nhấp trực tiếp cửa 3D: mở thư viện.
-- Nút “Về phòng Nobita” quay lại điểm xuất phát.
+- Giữ W/S để tiến/lùi dọc trục Z. Dùng con lăn hoặc các nút **Tiến** và **Lùi** trên màn hình để di chuyển từng đoạn. Space hoặc nút **Dừng** dừng cỗ máy.
+- M đổi giữa camera **Theo sau** và **Chính diện**. Dùng hai nút nhìn trái/phải để quan sát khung ảnh dọc hai bên.
+- Chọn **Bay đến khu** để di chuyển đến một trong 7 khu ngay trong đường hầm. **Tùy chọn → Giảm chuyển động** rút ngắn chuyển động khi chọn khu.
+- Nhấp khung 3D hoặc chọn **Album trong khu**. Cỗ máy dừng tại chỗ khi album mở. Dùng nút Trước/Sau, phím mũi tên hoặc vuốt ngang trên ảnh để xem các mục. Esc đóng album.
+- **Tùy chọn → Về phòng Nobita** đưa bạn về phòng.
 
-**Ảnh:** nhấn “Thêm ảnh kỷ niệm” trong một cửa. Hình và mô tả được lưu cục bộ bằng IndexedDB trên trình duyệt; không upload lên máy chủ. Có xem chi tiết, sửa tiêu đề và câu chuyện, xóa ảnh.
+**Ảnh và video công khai** đọc từ `public/media/` qua manifest `src/time-journey/memory-manifest.json`. Thư mục `public/memories/` chứa ảnh xem trước, poster video và bản JPEG tương thích trình duyệt cho các tệp HEIC. Cấu hình nhóm và ánh xạ tên thư mục nằm trong `memory-data.ts`. Khi cập nhật media, chạy:
+
+```powershell
+python -m pip install Pillow pillow-heif imageio-ffmpeg
+python scripts/build-memory-media.py
+```
+
+**Ảnh cục bộ** lưu bằng IndexedDB trên trình duyệt đã tải ảnh. Mở ảnh để sửa tiêu đề, mô tả hoặc xóa ảnh. Để tìm ảnh tải lên trước bản triển lãm, chọn **Tùy chọn → Ảnh đã lưu trước đây**. Chọn hoạt động rồi bấm **Gán ảnh** để chuyển ảnh vào album tương ứng. Dữ liệu đọc từ cùng cơ sở dữ liệu và cùng nguồn web (giao thức, tên miền, cổng) đã dùng để lưu ảnh.
 
 ## Góc lời chúc
 
@@ -47,10 +53,10 @@ Các ảnh thiệp và sticker nằm trong `public/wish-cards/` và `public/wish
 
 ## Hình sắc nét hơn
 
-- Mặc định bật **Độ nét cao**: render supersampling tối đa 2.25× pixel ratio, có MSAA.
+- Cảnh phòng dùng supersampling tối đa 2.25× pixel ratio, có MSAA.
 - Texture bộ nhân vật sử dụng anisotropic filtering; vật liệu/GLB nguyên bản được giữ lại.
 - Bề mặt phòng của nhà gốc sử dụng anisotropy cho các tile texturing.
-- Nút **Độ nét** trên thanh trên cùng chuyển từ Cao sang Tiêu chuẩn khi máy yếu.
+- Trong đường hầm, pixel ratio được giới hạn ở 1.5× để giảm tải khi bay giữa các cụm ảnh.
 
 Chất lượng hình học/texture vẫn bị giới hạn bởi GLB gốc. Tăng DPR không biến model phong cách hoạt hình thành mô hình phim chất lượng điện ảnh.
 
@@ -58,8 +64,9 @@ Chất lượng hình học/texture vẫn bị giới hạn bởi GLB gốc. Tă
 
 - `src/time-journey/journey-app.tsx` – hành trình và camera.
 - `src/time-journey/machine.tsx` – cỗ máy và 5 nhân vật GLB/animation gốc.
-- `src/time-journey/tunnel.tsx` – đường hầm 3D và 4 cổng ký ức.
-- `src/time-journey/gallery.tsx` – thư viện ảnh cục bộ.
+- `src/time-journey/tunnel.tsx` – nền thiên hà, ánh sáng và đồng hồ bay.
+- `src/time-journey/gallery.tsx` – album sự kiện, video và ảnh cục bộ.
+- `src/time-journey/memory-exhibition.tsx`, `memory-layout.ts` – khung 3D và bố cục theo dữ liệu.
 - `src/styles/journey.css` – giao diện hành trình.
 - `src/main.tsx`, `src/router.ts` – đặt hành trình làm trang đầu, diorama cũ chuyển sang `/house`.
 
@@ -69,4 +76,4 @@ Nguồn gốc: `https://github.com/lnanhkhoa/nobita-house-3d`. Giữ nguyên REA
 
 ## Kiểm thử
 
-File TSX đã được phân tích cú pháp bằng TypeScript, các GLB đã được kiểm tra tồn tại và chứa các clip animation. **Chưa chạy build WebGL thực tế trong môi trường này** vì không tải được các gói npm; cần xác minh trên máy người dùng sau `npm install`.
+Chạy `npm run typecheck`, `npm run build`, `npm run test` và `npm run lint`. Sau đó kiểm tra trên trình duyệt bằng cách vào Góc lời chúc, mở ngăn bàn, chọn khu, mở ảnh trực tiếp từ khung 3D và quay về phòng.
