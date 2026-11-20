@@ -671,6 +671,16 @@ export default function TimeJourney() {
             </button>
           </section>
         )}
+        {phase === 'room' && wishGallery && (
+          <ul className="wish-pin-legend" aria-label="Màu ghim theo người nhận">
+            {Object.entries(recipients).map(([id, { name, pinColor }]) => (
+              <li key={id}>
+                <span className="wish-pin-swatch" style={{ backgroundColor: pinColor }} aria-hidden="true" />
+                {name}
+              </li>
+            ))}
+          </ul>
+        )}
         {readyScene !== (phase === 'flight' ? 'flight' : 'room') && (
           <div className="journey-loading journey-loading-state" role="status">
             {phase === 'flight' ? 'Đang tải cỗ máy thời gian…' : 'Đang dựng phòng Nobita…'}

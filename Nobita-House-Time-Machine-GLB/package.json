@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "vite --port 2109",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "lint": "biome check .",
