@@ -76,8 +76,7 @@
   outline: 2px solid #185575;
   outline-offset: 2px;
 }
-.wish-demo-note, .wish-hint p { margin: 0; }
-.wish-demo-note { color: #516980; font-size: 14px; }
+.wish-hint p { margin: 0; }
 .wish-message { margin: 0; white-space: pre-wrap; line-height: 1.35; }
 .wish-guess-box {
   padding: 10px;

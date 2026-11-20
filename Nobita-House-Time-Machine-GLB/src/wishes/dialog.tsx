@@ -1,5 +1,5 @@
 import { type FormEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { cards, demoCode, type WishCard } from './demo';
+import { canOpenWish, cards, recipients, type RecipientId, type WishCard } from './data';
 import type { WishTextRegion } from './frames';
 
 const reactionArt = {
@@ -92,10 +92,10 @@ function shuffled(names: readonly string[]) {
     .map(({ name }) => name);
 }
 
-export function WishDialog({ card, unlocked, onUnlock, onClose }: {
+export function WishDialog({ card, recipientUnlocked, onUnlock, onClose }: {
   card: WishCard;
-  unlocked: boolean;
-  onUnlock: (recipient: string) => void;
+  recipientUnlocked: boolean;
+  onUnlock: (recipient: RecipientId) => void;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -105,6 +105,8 @@ export function WishDialog({ card, unlocked, onUnlock, onClose }: {
   const [options, setOptions] = useState<string[]>([]);
   const [hintOpen, setHintOpen] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  const { name, passcode } = recipients[card.recipient];
+  const unlocked = recipientUnlocked || canOpenWish(passcode, '');
 
   useEffect(() => {
     const element = dialog.current;
@@ -128,7 +130,7 @@ export function WishDialog({ card, unlocked, onUnlock, onClose }: {
       reactTo('wrong-code', 'Điền mã để mở lời chúc nhé.', 'Nobita đang chờ mã!');
       return;
     }
-    if (code !== demoCode) {
+    if (!canOpenWish(passcode, code)) {
       reactTo('wrong-code', 'Thử nhập lại mã mở thiệp nhé.');
       return;
     }
@@ -143,7 +145,7 @@ export function WishDialog({ card, unlocked, onUnlock, onClose }: {
       reactTo('retry', 'Có manh mối ở nút bóng đèn đó!', 'Ai gửi lời chúc nhỉ?');
       return;
     }
-    if ([card.author, ...card.aliases].some((value) => normalize(value) === answer)) {
+    if (normalize(card.author) === answer) {
       reactTo('solved', 'Chữ ký của người gửi đã hiện trong thiệp.');
       setRevealed(true);
     } else {
@@ -153,13 +155,16 @@ export function WishDialog({ card, unlocked, onUnlock, onClose }: {
 
   function toggleHint() {
     if (!options.length) {
-      const others = [...new Set(cards.map(({ author }) => author))].filter((name) => name !== card.author);
+      const authorKey = normalize(card.author);
+      const names = new Map(cards.map(({ author }) => [normalize(author), author]));
+      names.delete(authorKey);
+      const others = [...names.values()];
       setOptions(shuffled([card.author, ...shuffled(others).slice(0, 3)]));
     }
     setHintOpen((open) => !open);
   }
 
-  const recipient = `Gửi ${card.recipient === 'Cả ba thầy cô' ? 'cả ba thầy cô' : card.recipient}`;
+  const recipient = `Gửi ${card.recipient === 'ALL' ? name.toLocaleLowerCase('vi') : name}`;
   return (
     <dialog
       ref={dialog}
@@ -188,11 +193,10 @@ export function WishDialog({ card, unlocked, onUnlock, onClose }: {
             <form noValidate className="wish-form" onSubmit={unlock}>
               <label htmlFor="wish-code">Mã mở thiệp</label>
               <div className="wish-entry">
-                <input id="wish-code" type="password" inputMode="numeric" autoComplete="off"
+                <input id="wish-code" type="password" autoComplete="off"
                   autoFocus required value={input} onChange={(event) => setInput(event.target.value)} />
                 <button type="submit" className="wish-primary">Mở thiệp</button>
               </div>
-              <p className="wish-demo-note">Mã dùng thử {demoCode}</p>
             </form>
           ) : !revealed && (
             <div className={`wish-guess-box${hintOpen ? ' is-open' : ''}`}>
@@ -212,7 +216,7 @@ export function WishDialog({ card, unlocked, onUnlock, onClose }: {
               </form>
               <div id="wish-hint" className="wish-hint" hidden={!hintOpen}>
                 {hintOpen && <>
-                  <p>{card.hint}</p>
+                  <p>Chọn người gửi trong các tên dưới đây.</p>
                   <div className="wish-choices">
                     {options.map((name) => (
                       <button key={name} type="button" onClick={() => { setInput(name); guess(name); }}>{name}</button>

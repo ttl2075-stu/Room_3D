@@ -55,9 +55,17 @@ Bộ ảnh chụp bốn bố cục desktop và mobile nằm trong [docs/memory-c
 
 ## Góc lời chúc
 
-Ở phòng Nobita tại `/`, bấm **Góc lời chúc** để xem khung gỗ giữa hai tủ. Bấm trực tiếp vào một thiệp hoặc dùng danh sách **Chọn thiệp**. Bản thử gồm 36 thiệp và dùng mã `2026`. Khi mở thiệp, có thể nhập tên người gửi hoặc bấm bóng đèn để xem manh mối và bốn tên lựa chọn. **Về góc phòng** hoặc Esc đưa camera trở lại góc bàn học khi hộp thoại thiệp đã đóng.
+Ở phòng Nobita tại `/`, bấm **Góc lời chúc** để xem khung gỗ giữa hai tủ. Bấm trực tiếp vào một thiệp hoặc dùng danh sách **Chọn thiệp**. Khi mở thiệp, có thể nhập tên người gửi hoặc bấm bóng đèn để xem các tên gợi ý. **Về góc phòng** hoặc Esc đưa camera trở lại góc bàn học khi hộp thoại thiệp đã đóng.
 
-Các ảnh thiệp và sticker nằm trong `public/wish-cards/` và `public/wish-reactions/`. Clone repo và cài dependencies là có đủ ảnh chạy thử, kể cả khi thư mục `nobita-room-only` không có trên máy. `src/wishes/frames.ts` lưu hai vùng chữ và cỡ chữ cho từng ảnh. `src/wishes/demo.ts` chỉ chứa dữ liệu giả để chạy thử. Lời chúc thật, mã riêng và đáp án cần được giữ ở máy chủ trước khi gửi link thật cho người nhận.
+Bảng đọc [`src/wishes/loichuc.json`](src/wishes/loichuc.json). File này đã được điền từ `loichuc.csv` và là nơi chỉnh sửa lời chúc sau khi nhập.
+
+- Thêm mục vào mảng `wishes` với `sender` là người gửi, `recipient` là mã người nhận và `message` là lời chúc. Dùng `\n` để xuống dòng trong chuỗi JSON. Bảng có 36 vị trí, theo thứ tự trong mảng.
+- Trong `recipients`, sửa `pinColor` bằng mã màu hex. Màu mặc định là vàng cho `ALL` (Tất cả thầy cô), hồng cho `MON` (Cô Mon), xanh dương cho `DUY_HAI` (Thầy Duy Hải) và xanh lá cho `BA_CHIN` (Thầy Ba Chín).
+- Đặt `passcode` của mỗi người nhận thành `null` để mở trực tiếp hoặc một chuỗi riêng như `"0123"` để yêu cầu nhập mã. Nhập đúng một lần sẽ mở các thiệp cùng người nhận cho tới khi tải lại trang. Nhóm `ALL` có cấu hình mã riêng.
+
+Passcode hiện điều khiển thao tác mở thiệp trong giao diện. Dữ liệu lời chúc và mã nằm trong bản build gửi tới trình duyệt, nên người xem có thể đọc chúng trong mã nguồn.
+
+Các ảnh thiệp và sticker nằm trong `public/wish-cards/` và `public/wish-reactions/`. `src/wishes/frames.ts` lưu hai vùng chữ và cỡ chữ cho từng ảnh.
 
 ## Hình sắc nét hơn
 

@@ -2,7 +2,7 @@ import { useLoader, useThree } from '@react-three/fiber';
 import { useLayoutEffect, useState } from 'react';
 import { SRGBColorSpace, TextureLoader, type Texture } from 'three';
 import { LEVEL, WALLS } from '../editor/house/plan';
-import { cards, type WishCard } from './demo';
+import { cards, recipients, type WishCard } from './data';
 
 const roomEast = WALLS.find(({ id }) => id === 'up-room-east');
 export const wishFrame = {
@@ -13,6 +13,7 @@ export const wishFrame = {
 };
 const columns = 4;
 const rows = 9;
+const firstRow = (rows - Math.ceil(cards.length / columns)) / 2;
 const innerWidth = wishFrame.width - 2 * wishFrame.rail;
 const innerHeight = wishFrame.height - 2 * wishFrame.rail;
 const cardWidth = .203;
@@ -87,7 +88,7 @@ function WallCard({ card, index, texture, onOpen }: {
   const image = texture.image as HTMLImageElement;
   const height = cardWidth * image.height / image.width;
   const x = (index % columns + .5) * innerWidth / columns - innerWidth / 2;
-  const y = innerHeight / 2 - (Math.floor(index / columns) + .5) * innerHeight / rows;
+  const y = innerHeight / 2 - (firstRow + Math.floor(index / columns) + .5) * innerHeight / rows;
   return (
     <group
       position={[x, y, hovered && onOpen ? .067 : .054]}
@@ -105,7 +106,7 @@ function WallCard({ card, index, texture, onOpen }: {
       </mesh>
       <mesh position={[0, height / 2 + .008, .009]}>
         <boxGeometry args={[.023, .033, .011]} />
-        <meshStandardMaterial color="#b28c61" roughness={.87} />
+        <meshStandardMaterial color={recipients[card.recipient].pinColor} roughness={.87} />
       </mesh>
     </group>
   );

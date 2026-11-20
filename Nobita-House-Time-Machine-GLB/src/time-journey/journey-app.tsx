@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { HouseModel } from '../editor/house/house-model';
 import { interiorOf, LEVEL, roomById } from '../editor/house/plan';
 import { useReducedMotionRef } from '../utils/reduced-motion';
-import { cards, type WishCard } from '../wishes/demo';
+import { cards, recipients, type RecipientId, type WishCard } from '../wishes/data';
 import { WishDialog } from '../wishes/dialog';
 import { WishWall, wishFrame } from '../wishes/wall';
 import { Gallery } from './gallery';
@@ -377,7 +377,7 @@ export default function TimeJourney() {
   const [readyScene, setReadyScene] = useState<JourneyScene | null>(null);
   const [wishGallery, setWishGallery] = useState(false);
   const [wish, setWish] = useState<WishCard | null>(null);
-  const [unlockedRecipients, setUnlockedRecipients] = useState<ReadonlySet<string>>(() => new Set());
+  const [unlockedRecipients, setUnlockedRecipients] = useState<ReadonlySet<RecipientId>>(() => new Set());
   const [warp, setWarp] = useState(false);
   const [album, setAlbum] = useState<{ id: string; src?: string } | null>(null);
   const [inspection, setInspection] = useState<{ station: EventPlacement; src?: string } | null>(null);
@@ -656,7 +656,7 @@ export default function TimeJourney() {
                 </option>
                 {cards.map((card) => (
                   <option value={card.id} key={card.id}>
-                    Thiệp {card.id} · {card.recipient}
+                    Thiệp {card.id} · {recipients[card.recipient].name}
                   </option>
                 ))}
               </select>
@@ -744,7 +744,7 @@ export default function TimeJourney() {
         <WishDialog
           key={wish.id}
           card={wish}
-          unlocked={unlockedRecipients.has(wish.recipient)}
+          recipientUnlocked={unlockedRecipients.has(wish.recipient)}
           onUnlock={(recipient) => setUnlockedRecipients((current) => new Set([...current, recipient]))}
           onClose={() => setWish(null)}
         />
