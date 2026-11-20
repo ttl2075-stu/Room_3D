@@ -1,15 +1,20 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { HouseModel } from '../editor/house/house-model';
 import { LEVEL } from '../editor/house/plan';
+import { useReducedMotionRef } from '../utils/reduced-motion';
+import { cards, type WishCard } from '../wishes/demo';
+import { WishDialog } from '../wishes/dialog';
+import { WishWall, wishFrame } from '../wishes/wall';
 import { TimeMachine } from './machine';
 import { Gallery } from './gallery';
 import { PORTALS, TimeTunnel } from './tunnel';
 import '../styles/journey.css';
+import '../styles/wishes.css';
 
 type Phase = 'room' | 'boarding' | 'flight';
+type JourneyScene = Exclude<Phase, 'boarding'>;
 type ViewMode = 'front' | 'chase';
 interface ShipPose {
   position: THREE.Vector3;
@@ -22,6 +27,34 @@ const ROOM_EYE = new THREE.Vector3(3.22, LEVEL.upper + 1.42, -5.66);
 const DESK_AIM = new THREE.Vector3(2.13, LEVEL.upper + 0.85, -3.08);
 const ROOM_BOARD_EYE = new THREE.Vector3(2.13, LEVEL.upper + 0.90, -3.74);
 const ROOM_BOARD_AIM = new THREE.Vector3(2.13, LEVEL.upper + 0.62, -3.05);
+const CAMERA_FOV = 57;
+const WISH_AIM = new THREE.Vector3(...wishFrame.center);
+const DESK_LABELS = [new THREE.Vector3(2.13, LEVEL.upper + 1.12, -2.73)];
+const PORTAL_LABELS = PORTALS.map(({ position }) => new THREE.Vector3(position[0], position[1] + 2.27, position[2]));
+
+function WorldLabels({ anchors, buttons, distanceFactor }: {
+  anchors: THREE.Vector3[];
+  buttons: { current: (HTMLButtonElement | null)[] };
+  distanceFactor: number;
+}) {
+  const point = useMemo(() => new THREE.Vector3(), []);
+  useFrame(({ camera, size }) => {
+    camera.updateMatrixWorld();
+    anchors.forEach((anchor, index) => {
+      const button = buttons.current[index];
+      if (!button) return;
+      point.copy(anchor).project(camera);
+      const visible = point.z >= -1 && point.z <= 1 && Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1;
+      button.hidden = !visible;
+      if (!visible) return;
+      const x = (point.x + 1) * size.width / 2;
+      const y = (1 - point.y) * size.height / 2;
+      const scale = THREE.MathUtils.clamp(distanceFactor / camera.position.distanceTo(anchor), .5, 1.2);
+      button.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-50%) scale(${scale})`;
+    });
+  });
+  return null;
+}
 
 function SceneAtmosphere({phase}: {phase:Phase}) {
   const scene=useThree((state)=>state.scene);
@@ -34,16 +67,34 @@ function SceneAtmosphere({phase}: {phase:Phase}) {
   return null;
 }
 
-function RoomScene({ onBoard }: { onBoard:()=>void }) {
+function SceneReady({ scene, onReady }: {
+  scene: JourneyScene;
+  onReady: (scene: JourneyScene) => void;
+}) {
+  useEffect(() => { onReady(scene); }, [scene, onReady]);
+  return null;
+}
+
+function RoomScene({ onBoard, onOpenWish, wishGallery, onReady }: {
+  onBoard: () => void;
+  onOpenWish?: (card: WishCard) => void;
+  wishGallery: boolean;
+  onReady: (scene: JourneyScene) => void;
+}) {
   return <group name="original-Nobita-room-preserved">
     <ambientLight intensity={1.05} color="#e8f6ff"/>
     <hemisphereLight args={['#ffffff','#b8c7ad',1.35]}/>
     <directionalLight position={[1.2,9.4,-1.5]} color="#fff4de" intensity={1.9} castShadow shadow-mapSize={[2048,2048]}/>
     <pointLight position={[2.4,LEVEL.upper+1.88,-4.9]} intensity={5.6} distance={8} color="#fff0d1"/>
     <pointLight position={[1.5,LEVEL.upper+1.9,-3.2]} intensity={2.2} distance={6} color="#d4efff"/>
-    <Suspense fallback={<Html center position={[2.3,LEVEL.upper+1,-4.6]}><div className="journey-loading">Đang dựng phòng Nobita…</div></Html>}>
+    <Suspense fallback={null}>
       <HouseModel cutY={null} paving={false}/>
+      <SceneReady scene="room" onReady={onReady} />
     </Suspense>
+    <Suspense fallback={null}>
+      <WishWall onOpen={onOpenWish} />
+    </Suspense>
+    {!wishGallery && <>
     {/* Exact desk coordinates from original src/editor/house/plan.ts, not a fake 2D overlay. */}
     <mesh name="interactive-nobita-desk-drawer" position={[2.13,LEVEL.upper+0.55,-3.08]} onClick={(e)=>{e.stopPropagation();onBoard();}}
       onPointerOver={()=>{document.body.style.cursor='pointer';}}
@@ -54,10 +105,8 @@ function RoomScene({ onBoard }: { onBoard:()=>void }) {
     <group position={[2.13,LEVEL.upper+0.72,-2.73]}>
       <mesh><torusGeometry args={[0.18,0.024,12,60]}/><meshBasicMaterial color="#42b7f5" toneMapped={false}/></mesh>
       <pointLight intensity={1.7} color="#89ddff" distance={2}/>
-      <Html center position={[0,0.40,0]} distanceFactor={3.6}>
-        <button className="journey-room-marker" onClick={onBoard}>✦ Mở ngăn bàn</button>
-      </Html>
     </group>
+    </>}
   </group>;
 }
 
@@ -123,12 +172,25 @@ function FlightScene({
   </group>;
 }
 
-function CameraDirector({phase,ship,viewMode}: {phase:Phase;ship:{current:ShipPose};viewMode:ViewMode}) {
-  const {camera,gl}=useThree();
+function CameraDirector({phase,ship,viewMode,wishGallery}: {
+  phase:Phase; ship:{current:ShipPose}; viewMode:ViewMode; wishGallery:boolean;
+}) {
+  const {camera,gl,size}=useThree();
+  const reducedMotion = useReducedMotionRef();
+  const wishEye = useMemo(() => {
+    const halfView = Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV / 2));
+    const aspect = Math.max(.1, size.width / Math.max(1, size.height));
+    const heightFraction = aspect < .8 ? .69 : .74;
+    const distance = Math.min(2.58, Math.max(
+      wishFrame.height / (2 * halfView * heightFraction),
+      wishFrame.width / (2 * halfView * aspect * .86),
+    ) + .07);
+    return WISH_AIM.clone().add(new THREE.Vector3(-distance, 0, 0));
+  }, [size.width, size.height]);
   const lookRef=useRef(DESK_AIM.clone());
   const orbit=useRef({yaw:0,pitch:0,dragging:false,x:0,y:0});
   useEffect(()=>{
-    if(phase!=='room')return;
+    if(phase!=='room' || wishGallery)return;
     const dom=gl.domElement;
     const down=(e:PointerEvent)=>{if(e.button!==0)return;orbit.current.dragging=true;orbit.current.x=e.clientX;orbit.current.y=e.clientY;};
     const move=(e:PointerEvent)=>{if(!orbit.current.dragging)return;const o=orbit.current;
@@ -138,8 +200,8 @@ function CameraDirector({phase,ship,viewMode}: {phase:Phase;ship:{current:ShipPo
     };
     const up=()=>{orbit.current.dragging=false;};
     dom.addEventListener('pointerdown',down);window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);
-    return ()=>{dom.removeEventListener('pointerdown',down);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
-  },[gl,phase]);
+    return ()=>{orbit.current.dragging=false;dom.removeEventListener('pointerdown',down);window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
+  },[gl,phase,wishGallery]);
   useEffect(()=>{
     if(phase==='flight'){
       const p=ship.current.position;
@@ -151,11 +213,13 @@ function CameraDirector({phase,ship,viewMode}: {phase:Phase;ship:{current:ShipPo
     const dt=Math.min(delta,.05);
     if(phase!=='flight'){
       const o=orbit.current;
-      const pos=phase==='boarding'?ROOM_BOARD_EYE:ROOM_EYE;
-      const aim=(phase==='boarding'?ROOM_BOARD_AIM:DESK_AIM).clone();
-      if(phase==='room')aim.add(new THREE.Vector3(o.yaw*1.7,-o.pitch*1.25,0));
-      camera.position.lerp(pos,1-Math.exp(-3.8*dt));
-      lookRef.current.lerp(aim,1-Math.exp(-6*dt));
+      const viewingWishes = phase === 'room' && wishGallery;
+      const pos=phase==='boarding'?ROOM_BOARD_EYE:viewingWishes?wishEye:ROOM_EYE;
+      const aim=(phase==='boarding'?ROOM_BOARD_AIM:viewingWishes?WISH_AIM:DESK_AIM).clone();
+      if(phase==='room' && !viewingWishes)aim.add(new THREE.Vector3(o.yaw*1.7,-o.pitch*1.25,0));
+      const immediate = phase === 'room' && reducedMotion.current;
+      camera.position.lerp(pos,immediate?1:1-Math.exp(-3.8*dt));
+      lookRef.current.lerp(aim,immediate?1:1-Math.exp(-6*dt));
     }else{
       const s=ship.current;
       const quat=new THREE.Quaternion().setFromEuler(new THREE.Euler(s.pitch,s.yaw,s.roll,'YXZ'));
@@ -175,17 +239,24 @@ function WebglError({error}: {error:string}) {
 
 export default function TimeJourney() {
   const [phase,setPhase]=useState<Phase>('room');
+  const [readyScene, setReadyScene] = useState<JourneyScene | null>(null);
+  const [wishGallery, setWishGallery] = useState(false);
+  const [wish, setWish] = useState<WishCard | null>(null);
+  const [unlockedRecipients, setUnlockedRecipients] = useState<ReadonlySet<string>>(() => new Set());
   const [warp,setWarp]=useState(false);
   const [album,setAlbum]=useState<number|null>(null);
   const [viewMode,setViewMode]=useState<ViewMode>('front');
   const [quality,setQuality]=useState<'sharp'|'balanced'>('sharp');
   const [speed,setSpeed]=useState(0);
   const [error,setError]=useState('');
+  const worldButtons = useRef<(HTMLButtonElement | null)[]>([]);
   const ship=useRef<ShipPose>({position:new THREE.Vector3(0,2,6),yaw:0,pitch:0,roll:0,speed:0,autoIndex:null,keys:new Set()});
   const timers=useRef<number[]>([]);
 
   const board=useCallback(()=>{
     if(phase!=='room')return;
+    setWishGallery(false);
+    setWish(null);
     setPhase('boarding');setWarp(true);
     // A full-screen door glow conceals renderer handover; room itself does not move.
     timers.current.push(window.setTimeout(()=>setPhase('flight'),1400));
@@ -198,6 +269,15 @@ export default function TimeJourney() {
     timers.current.push(window.setTimeout(()=>setWarp(false),1300));
   },[]);
   useEffect(()=>()=>{for(const timer of timers.current)window.clearTimeout(timer);},[]);
+
+  useEffect(() => {
+    if (!wishGallery || wish) return;
+    const close = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setWishGallery(false);
+    };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [wishGallery, wish]);
 
   useEffect(()=>{
     if(phase!=='flight'||album!==null)return;
@@ -234,30 +314,65 @@ export default function TimeJourney() {
       className="journey-canvas"
       shadows
       dpr={quality==='sharp'?Math.min(window.devicePixelRatio*1.6,2.25):Math.min(window.devicePixelRatio,1.3)}
-      camera={{position:[ROOM_EYE.x,ROOM_EYE.y,ROOM_EYE.z],fov:57,near:.06,far:250}}
+      camera={{position:[ROOM_EYE.x,ROOM_EYE.y,ROOM_EYE.z],fov:CAMERA_FOV,near:.06,far:250}}
       gl={{antialias:true,powerPreference:'high-performance',outputColorSpace:THREE.SRGBColorSpace,toneMapping:THREE.NoToneMapping}}
       onCreated={({gl})=>{gl.shadowMap.type=THREE.PCFSoftShadowMap;}}
     >
       <SceneAtmosphere phase={phase}/>
-      <CameraDirector phase={phase} ship={ship} viewMode={viewMode}/>
-      {phase!=='flight' ? <RoomScene onBoard={board}/> : <Suspense fallback={<Html center><div className="journey-loading">Đang tải 5 nhân vật 3D…</div></Html>}>
+      <CameraDirector phase={phase} ship={ship} viewMode={viewMode} wishGallery={wishGallery}/>
+      {!wishGallery && <WorldLabels
+        anchors={phase === 'flight' ? PORTAL_LABELS : DESK_LABELS}
+        buttons={worldButtons}
+        distanceFactor={phase === 'flight' ? 8 : 3.6}
+      />}
+      {phase!=='flight' ? <RoomScene onBoard={board} onOpenWish={phase === 'room' ? setWish : undefined}
+        wishGallery={wishGallery} onReady={setReadyScene}/> : <Suspense fallback={null}>
         <TimeTunnel onSelect={setAlbum}/>
         <FlightScene ship={ship} onSelect={setAlbum} onSpeed={setSpeed}/>
+        <SceneReady scene="flight" onReady={setReadyScene} />
       </Suspense>}
     </Canvas>
 
     <div className="journey-ui">
+      {phase === 'flight' ? PORTALS.map((door, index) => (
+        <button key={door.date} className="journey-portal-label journey-world-label"
+          ref={(element) => { worldButtons.current[index] = element; }} hidden onClick={() => setAlbum(index)}>
+          {door.date}<strong>{door.title}</strong>
+        </button>
+      )) : !wishGallery && (
+        <button className="journey-room-marker journey-world-label" onClick={board}
+          ref={(element) => { worldButtons.current[0] = element; }} hidden>
+          ✦ Mở ngăn bàn
+        </button>
+      )}
+      {readyScene !== (phase === 'flight' ? 'flight' : 'room') && (
+        <div className="journey-loading journey-loading-state" role="status">
+          {phase === 'flight' ? 'Đang tải cỗ máy thời gian…' : 'Đang dựng phòng Nobita…'}
+        </div>
+      )}
       <header className="journey-header panel">
         <div className="journey-identity"><span className="journey-logo">⏰</span><div><b>NOBITA · TIME MEMORIES</b><small>{phase==='flight'?'Đang du hành qua miền ký ức':'Phòng Nobita · Không gian gốc 3D'}</small></div></div>
         <div className="journey-header-actions"><button className="journey-button" onClick={()=>setQuality(q=>q==='sharp'?'balanced':'sharp')}>Độ nét: {quality==='sharp'?'Cao':'Tiêu chuẩn'}</button><a className="journey-button" href="/characters/doraemon">Xem model gốc</a><a className="journey-button" href="/house">Khám phá nhà</a></div>
       </header>
-      {phase!=='flight'?<section className="journey-intro panel">
+      {phase!=='flight' ? (wishGallery ? <div className="journey-wish-toolbar">
+        <button className="journey-button" onClick={() => setWishGallery(false)}>Về góc phòng</button>
+        <select aria-label="Chọn thiệp" value="" onChange={(event) => {
+          const card = cards.find(({ id }) => id === Number(event.target.value));
+          if (card) setWish(card);
+        }}>
+          <option value="" disabled>Chọn thiệp</option>
+          {cards.map(({ id }) => <option key={id} value={id}>Thiệp {id}</option>)}
+        </select>
+      </div> : <section className="journey-intro panel">
         <p className="journey-eyebrow">KHỞI ĐẦU CHUYẾN DU HÀNH</p>
         <h1>Phòng của Nobita</h1>
         <p>Bạn đang đứng trong căn phòng thật của repo gốc. Bàn học ngay phía trước có ngăn kéo dẫn đến cỗ máy thời gian.</p>
-        <button className="journey-button journey-button-primary" disabled={phase==='boarding'} onClick={board}>{phase==='boarding'?'Đang mở ngăn bàn…':'Mở ngăn bàn · Lên cỗ máy'}</button>
+        <div className="journey-row">
+          <button className="journey-button journey-button-primary" disabled={phase==='boarding'} onClick={board}>{phase==='boarding'?'Đang mở ngăn bàn…':'Mở ngăn bàn · Lên cỗ máy'}</button>
+          {phase === 'room' && <button className="journey-button" onClick={() => setWishGallery(true)}>Góc lời chúc</button>}
+        </div>
         <small>Kéo chuột để nhìn quanh · Hoặc nhấn trực tiếp vào ngăn bàn 3D</small>
-      </section>: <>
+      </section>) : <>
         <section className="journey-flight-controls panel">
           <p className="journey-eyebrow">CHUYẾN DU HÀNH</p><h2>Cỗ máy thời gian</h2>
           <p>5 nhân vật là model GLB có animation từ repo Nobita House.</p>
@@ -279,6 +394,13 @@ export default function TimeJourney() {
     </div>
     <div className={`journey-warp ${warp?'visible':''}`} aria-hidden="true"><span>✧</span></div>
     {album!==null&&<Gallery album={album} onClose={()=>setAlbum(null)}/>}
+    {wish && phase === 'room' && <WishDialog
+      key={wish.id}
+      card={wish}
+      unlocked={unlockedRecipients.has(wish.recipient)}
+      onUnlock={(recipient) => setUnlockedRecipients((current) => new Set([...current, recipient]))}
+      onClose={() => setWish(null)}
+    />}
     {error&&<WebglError error={error}/>}
   </main>;
 }

@@ -39,6 +39,12 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 **Ảnh:** nhấn “Thêm ảnh kỷ niệm” trong một cửa. Hình và mô tả được lưu cục bộ bằng IndexedDB trên trình duyệt; không upload lên máy chủ. Có xem chi tiết, sửa tiêu đề và câu chuyện, xóa ảnh.
 
+## Góc lời chúc
+
+Ở phòng Nobita tại `/`, bấm **Góc lời chúc** để xem khung gỗ giữa hai tủ. Bấm trực tiếp vào một thiệp hoặc dùng danh sách **Chọn thiệp**. Bản thử gồm 36 thiệp và dùng mã `2026`. Khi mở thiệp, có thể nhập tên người gửi hoặc bấm bóng đèn để xem manh mối và bốn tên lựa chọn. **Về góc phòng** hoặc Esc đưa camera trở lại góc bàn học khi hộp thoại thiệp đã đóng.
+
+Các ảnh thiệp và sticker nằm trong `public/wish-cards/` và `public/wish-reactions/`. Clone repo và cài dependencies là có đủ ảnh chạy thử, kể cả khi thư mục `nobita-room-only` không có trên máy. `src/wishes/frames.ts` lưu hai vùng chữ và cỡ chữ cho từng ảnh. `src/wishes/demo.ts` chỉ chứa dữ liệu giả để chạy thử. Lời chúc thật, mã riêng và đáp án cần được giữ ở máy chủ trước khi gửi link thật cho người nhận.
+
 ## Hình sắc nét hơn
 
 - Mặc định bật **Độ nét cao**: render supersampling tối đa 2.25× pixel ratio, có MSAA.

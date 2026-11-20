@@ -1,4 +1,3 @@
-import { Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { memo, useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -46,11 +45,6 @@ function MemoryDoor({ index, onSelect }: { index: number; onSelect: (index:numbe
     <mesh position={[0,0,0.22]}><torusGeometry args={[1.66,0.07,12,64]}/><meshBasicMaterial color={door.color} side={THREE.DoubleSide} toneMapped={false}/></mesh>
     <mesh position={[0.73,-0.14,0.24]}><sphereGeometry args={[0.09,16,12]}/><meshStandardMaterial color="#e6af52"/></mesh>
     <pointLight color={door.color} intensity={8} distance={9} position={[0,0,0.6]}/>
-    <Html center position={[0,2.27,0]} distanceFactor={8} occlude={false}>
-      <button className="journey-portal-label" onClick={(event)=>{event.stopPropagation();onSelect(index);}}>
-        {door.date}<strong>{door.title}</strong>
-      </button>
-    </Html>
   </group>;
 }
 

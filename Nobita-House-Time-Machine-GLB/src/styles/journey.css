@@ -3,6 +3,9 @@
 .journey-app { position:fixed;inset:0;overflow:hidden;background:#dff3fd;color:var(--ink-900);font-family:var(--font-ui); }
 .journey-canvas { position:absolute!important;inset:0!important;width:100%!important;height:100%!important; }
 .journey-ui {position:absolute;inset:0;pointer-events:none;z-index:8;}
+.journey-loading-state {position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);}
+.journey-world-label {position:absolute;top:0;left:0;}
+.journey-world-label[hidden] {display:none;}
 .journey-ui button,.journey-ui a,.journey-ui section,.journey-ui aside,.journey-ui header {pointer-events:auto;}
 .journey-header {position:absolute;left:18px;right:18px;top:16px;min-height:67px;padding:11px 15px;display:flex;align-items:center;justify-content:space-between;gap:15px;}
 .journey-identity {display:flex;align-items:center;gap:12px;}
